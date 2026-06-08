@@ -38,6 +38,46 @@ defmodule XamalProxy.Integration.PlaygroundTest do
     assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
   end
 
+  test "round robin config balances across active targets" do
+    {:ok, blue} = DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:rr_blue))
+
+    {:ok, green} =
+      DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:rr_green))
+
+    {:ok, listener} = start_livery_listener()
+
+    proxy_port = listener_port(listener)
+    service = "rr-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
+
+    config = %XamalProxy.Config{
+      services: [
+        %XamalProxy.Config.Service{
+          name: service,
+          hosts: [host],
+          balance: %{policy: :round_robin, options: []},
+          targets: [
+            %XamalProxy.Config.Target{
+              name: "blue",
+              url: "http://127.0.0.1:#{DemoApp.Server.port(blue)}",
+              active?: true
+            },
+            %XamalProxy.Config.Target{
+              name: "green",
+              url: "http://127.0.0.1:#{DemoApp.Server.port(green)}",
+              active?: true
+            }
+          ]
+        }
+      ]
+    }
+
+    assert :ok = XamalProxy.Control.apply_config(config)
+    assert {:ok, "demo_app:blue\n"} = get(proxy_port, host)
+    assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
+    assert {:ok, "demo_app:blue\n"} = get(proxy_port, host)
+  end
+
   test "Livery listener forwards request and streamed response bodies" do
     {:ok, backend} =
       DemoApp.Server.start_link(port: 0, label: "stream", name: unique_name(:stream))

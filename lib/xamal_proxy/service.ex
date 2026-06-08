@@ -51,7 +51,12 @@ defmodule XamalProxy.Service do
     :gen_statem.call(via(id), :get)
   end
 
-  @spec checkout(String.t(), String.t()) :: {:ok, Target.t()} | {:error, term()}
+  @spec configure(String.t(), map()) :: {:ok, State.t()} | {:error, term()}
+  def configure(id, spec) do
+    :gen_statem.call(via(id), {:configure, spec})
+  end
+
+  @spec checkout(String.t(), String.t() | :select) :: {:ok, Target.t()} | {:error, term()}
   def checkout(id, target_id) do
     :gen_statem.call(via(id), {:checkout, target_id})
   end
@@ -79,6 +84,8 @@ defmodule XamalProxy.Service do
           state
           | hosts: hosts,
             active_target: target,
+            active_targets: [target],
+            target_cursor: 0,
             old_targets: old_targets,
             status: :serving
         }
@@ -91,6 +98,28 @@ defmodule XamalProxy.Service do
       {:error, reason} ->
         next_state = %{state | status: :failed}
         {:keep_state, next_state, [{:reply, from, {:error, reason}}]}
+    end
+  end
+
+  def handle_event({:call, from}, {:configure, spec}, _status, %State{} = state) do
+    case prepare_configure(spec) do
+      {:ok, targets, hosts, route_target_id} ->
+        active_target = List.first(targets)
+
+        next_state = %State{
+          state
+          | hosts: hosts,
+            active_target: active_target,
+            active_targets: targets,
+            target_cursor: 0,
+            status: :serving
+        }
+
+        Enum.each(hosts, &RouteTable.put(&1, state.id, route_target_id))
+        {:next_state, :serving, next_state, [{:reply, from, {:ok, next_state}}]}
+
+      {:error, reason} ->
+        {:keep_state, %{state | status: :failed}, [{:reply, from, {:error, reason}}]}
     end
   end
 
@@ -132,6 +161,35 @@ defmodule XamalProxy.Service do
     end
   end
 
+  defp prepare_configure(spec) do
+    with hosts when hosts != [] <- normalize_hosts(Map.fetch!(spec, :hosts)),
+         {:ok, targets} <- build_targets(Map.fetch!(spec, :targets)) do
+      route_target_id = route_target_id(Map.get(spec, :balance), targets)
+
+      {:ok, targets, hosts, route_target_id}
+    else
+      [] -> {:error, :no_hosts}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp route_target_id(:round_robin, [_first, _second | _rest]), do: :select
+  defp route_target_id(_balance, [target | _rest]), do: target.id
+
+  defp build_targets(target_specs) do
+    target_specs
+    |> Enum.map(&Target.new(&1.id, &1.url, Map.get(&1, :metadata, %{})))
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, target}, {:ok, targets} -> {:cont, {:ok, [target | targets]}}
+      {:error, reason}, _acc -> {:halt, {:error, reason}}
+    end)
+    |> case do
+      {:ok, []} -> {:error, :no_targets}
+      {:ok, targets} -> {:ok, Enum.reverse(targets)}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp build_target(spec) do
     target_id = Map.get(spec, :target_id, default_target_id())
     metadata = Map.get(spec, :metadata, %{})
@@ -158,15 +216,32 @@ defmodule XamalProxy.Service do
     result
   end
 
-  defp checkout_target(%State{active_target: %Target{id: id} = target} = state, id) do
-    next_target = %{target | active_requests: target.active_requests + 1}
-    {:ok, next_target, %{state | active_target: next_target}}
+  defp checkout_target(%State{active_targets: targets} = state, :select) when targets != [] do
+    index = rem(state.target_cursor, length(targets))
+    target = Enum.at(targets, index)
+    next_target = increment_target(target)
+    next_targets = List.replace_at(targets, index, next_target)
+
+    {:ok, next_target,
+     %{state | active_targets: next_targets, target_cursor: state.target_cursor + 1}}
   end
 
-  defp checkout_target(%State{old_targets: old_targets} = state, target_id) do
+  defp checkout_target(%State{active_targets: targets} = state, target_id) do
+    case Enum.find_index(targets, &(&1.id == target_id)) do
+      nil ->
+        checkout_old_target(state, target_id)
+
+      index ->
+        next_target = targets |> Enum.at(index) |> increment_target()
+        next_targets = List.replace_at(targets, index, next_target)
+        {:ok, next_target, %{state | active_targets: next_targets, active_target: next_target}}
+    end
+  end
+
+  defp checkout_old_target(%State{old_targets: old_targets} = state, target_id) do
     case Map.fetch(old_targets, target_id) do
       {:ok, %Target{draining?: true} = target} ->
-        next_target = %{target | active_requests: target.active_requests + 1}
+        next_target = increment_target(target)
         {:ok, next_target, %{state | old_targets: Map.put(old_targets, target_id, next_target)}}
 
       {:ok, _target} ->
@@ -177,11 +252,18 @@ defmodule XamalProxy.Service do
     end
   end
 
-  defp checkin_target(%State{active_target: %Target{id: id} = target} = state, id) do
-    %{state | active_target: decrement_target(target)}
+  defp checkin_target(%State{active_targets: targets} = state, target_id) do
+    case Enum.find_index(targets, &(&1.id == target_id)) do
+      nil ->
+        checkin_old_target(state, target_id)
+
+      index ->
+        target = targets |> Enum.at(index) |> decrement_target()
+        %{state | active_targets: List.replace_at(targets, index, target)}
+    end
   end
 
-  defp checkin_target(%State{old_targets: old_targets} = state, target_id) do
+  defp checkin_old_target(%State{old_targets: old_targets} = state, target_id) do
     case Map.fetch(old_targets, target_id) do
       {:ok, target} ->
         %{state | old_targets: Map.put(old_targets, target_id, decrement_target(target))}
@@ -189,6 +271,10 @@ defmodule XamalProxy.Service do
       :error ->
         state
     end
+  end
+
+  defp increment_target(%Target{} = target) do
+    %{target | active_requests: target.active_requests + 1}
   end
 
   defp decrement_target(%Target{active_requests: count} = target) do

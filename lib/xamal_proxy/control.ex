@@ -49,7 +49,8 @@ defmodule XamalProxy.Control do
     XamalProxy.RouteTable.all()
   end
 
-  @spec checkout(String.t(), String.t()) :: {:ok, XamalProxy.Target.t()} | {:error, term()}
+  @spec checkout(String.t(), String.t() | :select) ::
+          {:ok, XamalProxy.Target.t()} | {:error, term()}
   def checkout(service, target_id) do
     Service.checkout(service, target_id)
   end
@@ -101,6 +102,18 @@ defmodule XamalProxy.Control do
     end
   end
 
+  defp deploy_config_service(%ConfigService{balance: %{policy: :round_robin}} = service) do
+    targets = active_or_all_targets(service)
+
+    with {:ok, _pid} <- ensure_service(service.name) do
+      Service.configure(service.name, %{
+        hosts: service.hosts,
+        balance: :round_robin,
+        targets: Enum.map(targets, &%{id: &1.name, url: &1.url, metadata: &1.metadata})
+      })
+    end
+  end
+
   defp deploy_config_service(%ConfigService{} = service) do
     case ConfigService.active_target(service) do
       nil ->
@@ -118,6 +131,13 @@ defmodule XamalProxy.Control do
           metadata: target.metadata,
           skip_health_check: true
         })
+    end
+  end
+
+  defp active_or_all_targets(%ConfigService{targets: targets}) do
+    case Enum.filter(targets, & &1.active?) do
+      [] -> targets
+      active_targets -> active_targets
     end
   end
 

@@ -12,7 +12,7 @@ defmodule XamalProxy.RouteTable do
 
   @type host :: String.t()
   @type service_id :: String.t()
-  @type target_id :: String.t()
+  @type target_id :: String.t() | :select
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)

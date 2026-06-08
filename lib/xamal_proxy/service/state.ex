@@ -6,7 +6,15 @@ defmodule XamalProxy.Service.State do
   alias XamalProxy.Target
 
   @enforce_keys [:id]
-  defstruct [:id, hosts: [], active_target: nil, old_targets: %{}, status: :empty]
+  defstruct [
+    :id,
+    hosts: [],
+    active_target: nil,
+    active_targets: [],
+    target_cursor: 0,
+    old_targets: %{},
+    status: :empty
+  ]
 
   @type status :: :empty | :serving | :checking | :switching | :draining | :paused | :failed
 
@@ -14,6 +22,8 @@ defmodule XamalProxy.Service.State do
           id: String.t(),
           hosts: [String.t()],
           active_target: Target.t() | nil,
+          active_targets: [Target.t()],
+          target_cursor: non_neg_integer(),
           old_targets: %{optional(String.t()) => Target.t()},
           status: status()
         }
