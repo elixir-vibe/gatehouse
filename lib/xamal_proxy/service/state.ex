@@ -1,0 +1,20 @@
+defmodule XamalProxy.Service.State do
+  @moduledoc """
+  Runtime state for one proxied service.
+  """
+
+  alias XamalProxy.Target
+
+  @enforce_keys [:id]
+  defstruct [:id, hosts: [], active_target: nil, old_targets: %{}, status: :empty]
+
+  @type status :: :empty | :serving | :checking | :switching | :draining | :paused | :failed
+
+  @type t :: %__MODULE__{
+          id: String.t(),
+          hosts: [String.t()],
+          active_target: Target.t() | nil,
+          old_targets: %{optional(String.t()) => Target.t()},
+          status: status()
+        }
+end
