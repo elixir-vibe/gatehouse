@@ -19,9 +19,8 @@ defmodule XamalProxy.Store do
     binary = :erlang.term_to_binary(term)
 
     with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(tmp_path, binary),
-         :ok <- File.rename(tmp_path, path) do
-      :ok
+         :ok <- File.write(tmp_path, binary) do
+      File.rename(tmp_path, path)
     end
   end
 end

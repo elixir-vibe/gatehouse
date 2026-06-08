@@ -1,78 +1,212 @@
 defmodule XamalProxy.Service do
   @moduledoc """
-  OTP process that owns deploy/switch/drain state for one service.
-
-  This starts as a `GenServer` while the state machine is small. As deploy and
-  drain transitions grow, this is the seam to promote to `:gen_statem` without
-  changing the public control API.
+  OTP state machine that owns deploy/switch/drain state for one service.
   """
 
-  use GenServer
+  @behaviour :gen_statem
 
+  alias XamalProxy.HealthCheck
   alias XamalProxy.RouteTable
   alias XamalProxy.Service.State
   alias XamalProxy.Target
+
+  @default_drain_timeout 30_000
+  @default_health_path "/up"
+  @default_health_timeout 5_000
 
   @type deploy_spec :: %{
           required(:service) => String.t(),
           required(:hosts) => [String.t()],
           required(:target_url) => String.t(),
           optional(:target_id) => String.t(),
-          optional(:metadata) => map()
+          optional(:health_path) => String.t(),
+          optional(:health_timeout) => timeout(),
+          optional(:drain_timeout) => timeout(),
+          optional(:metadata) => map(),
+          optional(:skip_health_check) => boolean()
         }
 
+  def child_spec(id) do
+    %{
+      id: {__MODULE__, id},
+      start: {__MODULE__, :start_link, [id]},
+      type: :worker,
+      restart: :permanent,
+      shutdown: 5_000
+    }
+  end
+
   def start_link(id) when is_binary(id) do
-    GenServer.start_link(__MODULE__, id, name: via(id))
+    :gen_statem.start_link(via(id), __MODULE__, id, [])
   end
 
   @spec deploy(String.t(), deploy_spec()) :: {:ok, State.t()} | {:error, term()}
   def deploy(id, spec) do
-    GenServer.call(via(id), {:deploy, spec})
+    :gen_statem.call(via(id), {:deploy, spec}, deploy_timeout(spec))
   end
 
   @spec get(String.t()) :: State.t()
   def get(id) do
-    GenServer.call(via(id), :get)
+    :gen_statem.call(via(id), :get)
   end
 
-  @impl GenServer
+  @spec checkout(String.t(), String.t()) :: {:ok, Target.t()} | {:error, term()}
+  def checkout(id, target_id) do
+    :gen_statem.call(via(id), {:checkout, target_id})
+  end
+
+  @spec checkin(String.t(), String.t()) :: :ok
+  def checkin(id, target_id) do
+    :gen_statem.cast(via(id), {:checkin, target_id})
+  end
+
+  @impl :gen_statem
+  def callback_mode, do: :handle_event_function
+
+  @impl :gen_statem
   def init(id) do
-    {:ok, %State{id: id}}
+    {:ok, :empty, %State{id: id}}
   end
 
-  @impl GenServer
-  def handle_call({:deploy, spec}, _from, %State{} = state) do
-    with {:ok, target} <- build_target(spec),
-         hosts when hosts != [] <- normalize_hosts(Map.fetch!(spec, :hosts)) do
-      old_targets = put_old_target(state.old_targets, state.active_target)
+  @impl :gen_statem
+  def handle_event({:call, from}, {:deploy, spec}, _status, %State{} = state) do
+    case prepare_deploy(spec) do
+      {:ok, target, hosts, drain_timeout} ->
+        old_targets = put_old_target(state.old_targets, state.active_target, drain_timeout)
 
-      next_state = %State{
-        state
-        | hosts: hosts,
-          active_target: target,
-          old_targets: old_targets,
-          status: :serving
-      }
+        next_state = %State{
+          state
+          | hosts: hosts,
+            active_target: target,
+            old_targets: old_targets,
+            status: :serving
+        }
 
-      Enum.each(hosts, &RouteTable.put(&1, state.id, target.id))
-      {:reply, {:ok, next_state}, next_state}
-    else
-      [] ->
-        {:reply, {:error, :no_hosts}, %{state | status: :failed}}
+        Enum.each(hosts, &RouteTable.put(&1, state.id, target.id))
+
+        schedule_drains(old_targets)
+        {:next_state, :serving, next_state, [{:reply, from, {:ok, next_state}}]}
 
       {:error, reason} ->
-        {:reply, {:error, reason}, %{state | status: :failed}}
+        next_state = %{state | status: :failed}
+        {:keep_state, next_state, [{:reply, from, {:error, reason}}]}
     end
   end
 
-  def handle_call(:get, _from, state) do
-    {:reply, state, state}
+  def handle_event({:call, from}, :get, _status, %State{} = state) do
+    {:keep_state_and_data, [{:reply, from, state}]}
+  end
+
+  def handle_event({:call, from}, {:checkout, target_id}, _status, %State{} = state) do
+    case checkout_target(state, target_id) do
+      {:ok, target, next_state} ->
+        {:keep_state, next_state, [{:reply, from, {:ok, target}}]}
+
+      {:error, reason} ->
+        {:keep_state_and_data, [{:reply, from, {:error, reason}}]}
+    end
+  end
+
+  def handle_event(:cast, {:checkin, target_id}, _status, %State{} = state) do
+    next_state = checkin_target(state, target_id)
+    {:keep_state, maybe_finish_drains(next_state)}
+  end
+
+  def handle_event(:info, {:drain_timeout, target_id}, _status, %State{} = state) do
+    {:keep_state, drop_old_target(state, target_id)}
+  end
+
+  def handle_event(_event_type, _event, _status, %State{} = state) do
+    {:keep_state, state}
+  end
+
+  defp prepare_deploy(spec) do
+    with hosts when hosts != [] <- normalize_hosts(Map.fetch!(spec, :hosts)),
+         {:ok, target} <- build_target(spec),
+         :ok <- maybe_health_check(target, spec) do
+      {:ok, target, hosts, Map.get(spec, :drain_timeout, @default_drain_timeout)}
+    else
+      [] -> {:error, :no_hosts}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp build_target(spec) do
     target_id = Map.get(spec, :target_id, default_target_id())
     metadata = Map.get(spec, :metadata, %{})
     Target.new(target_id, Map.fetch!(spec, :target_url), metadata)
+  end
+
+  defp maybe_health_check(_target, %{skip_health_check: true}), do: :ok
+
+  defp maybe_health_check(%Target{url: url}, spec) do
+    HealthCheck.check(url,
+      path: Map.get(spec, :health_path, @default_health_path),
+      timeout: Map.get(spec, :health_timeout, @default_health_timeout)
+    )
+  end
+
+  defp checkout_target(%State{active_target: %Target{id: id} = target} = state, id) do
+    next_target = %{target | active_requests: target.active_requests + 1}
+    {:ok, next_target, %{state | active_target: next_target}}
+  end
+
+  defp checkout_target(%State{old_targets: old_targets} = state, target_id) do
+    case Map.fetch(old_targets, target_id) do
+      {:ok, %Target{draining?: true} = target} ->
+        next_target = %{target | active_requests: target.active_requests + 1}
+        {:ok, next_target, %{state | old_targets: Map.put(old_targets, target_id, next_target)}}
+
+      {:ok, _target} ->
+        {:error, :not_active}
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  defp checkin_target(%State{active_target: %Target{id: id} = target} = state, id) do
+    %{state | active_target: decrement_target(target)}
+  end
+
+  defp checkin_target(%State{old_targets: old_targets} = state, target_id) do
+    case Map.fetch(old_targets, target_id) do
+      {:ok, target} ->
+        %{state | old_targets: Map.put(old_targets, target_id, decrement_target(target))}
+
+      :error ->
+        state
+    end
+  end
+
+  defp decrement_target(%Target{active_requests: count} = target) do
+    %{target | active_requests: max(count - 1, 0)}
+  end
+
+  defp maybe_finish_drains(%State{old_targets: old_targets} = state) do
+    drained_ids =
+      old_targets
+      |> Enum.filter(fn {_id, target} -> target.draining? and target.active_requests == 0 end)
+      |> Enum.map(fn {id, _target} -> id end)
+
+    Enum.reduce(drained_ids, state, &drop_old_target(&2, &1))
+  end
+
+  defp put_old_target(old_targets, nil, _drain_timeout), do: old_targets
+
+  defp put_old_target(old_targets, %Target{id: id} = target, drain_timeout) do
+    Map.put(old_targets, id, %{target | draining?: true, drain_deadline: deadline(drain_timeout)})
+  end
+
+  defp schedule_drains(old_targets) do
+    Enum.each(old_targets, fn {target_id, target} ->
+      timeout = max(DateTime.diff(target.drain_deadline, DateTime.utc_now(), :millisecond), 0)
+      Process.send_after(self(), {:drain_timeout, target_id}, timeout)
+    end)
+  end
+
+  defp drop_old_target(%State{old_targets: old_targets} = state, target_id) do
+    %{state | old_targets: Map.delete(old_targets, target_id)}
   end
 
   defp normalize_hosts(hosts) when is_list(hosts) do
@@ -82,12 +216,17 @@ defmodule XamalProxy.Service do
     |> Enum.uniq()
   end
 
-  defp put_old_target(old_targets, nil), do: old_targets
-  defp put_old_target(old_targets, %Target{id: id} = target), do: Map.put(old_targets, id, target)
+  defp deadline(:infinity), do: DateTime.add(DateTime.utc_now(), 86_400, :second)
+  defp deadline(milliseconds), do: DateTime.add(DateTime.utc_now(), milliseconds, :millisecond)
 
   defp default_target_id do
     System.unique_integer([:positive, :monotonic])
     |> Integer.to_string()
+  end
+
+  defp deploy_timeout(spec) do
+    health_timeout = Map.get(spec, :health_timeout, @default_health_timeout)
+    health_timeout + 5_000
   end
 
   defp via(id) do

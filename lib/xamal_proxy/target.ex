@@ -4,11 +4,12 @@ defmodule XamalProxy.Target do
   """
 
   @enforce_keys [:id, :url]
-  defstruct [:id, :url, metadata: %{}, active_requests: 0, draining?: false]
+  defstruct [:id, :url, :drain_deadline, metadata: %{}, active_requests: 0, draining?: false]
 
   @type t :: %__MODULE__{
           id: String.t(),
           url: URI.t(),
+          drain_deadline: DateTime.t() | nil,
           metadata: map(),
           active_requests: non_neg_integer(),
           draining?: boolean()

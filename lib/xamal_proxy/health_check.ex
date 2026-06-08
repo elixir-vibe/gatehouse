@@ -18,10 +18,9 @@ defmodule XamalProxy.HealthCheck do
   end
 
   defp request(url, timeout) do
-    options = [timeout: timeout]
-    http_options = [autoredirect: false]
+    http_options = [autoredirect: false, timeout: timeout]
 
-    case :httpc.request(:get, {url, []}, http_options, options) do
+    case :httpc.request(:get, {url, []}, http_options, []) do
       {:ok, {{_, status, _}, _headers, _body}} when status in 200..399 -> :ok
       {:ok, {{_, status, _}, _headers, _body}} -> {:error, {:unexpected_status, status}}
       {:error, reason} -> {:error, reason}

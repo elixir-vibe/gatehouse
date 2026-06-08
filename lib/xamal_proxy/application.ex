@@ -8,7 +8,10 @@ defmodule XamalProxy.Application do
     children = [
       XamalProxy.RouteTable,
       {Registry, keys: :unique, name: XamalProxy.ServiceRegistry},
-      {DynamicSupervisor, strategy: :one_for_one, name: XamalProxy.ServiceSupervisor}
+      {DynamicSupervisor, strategy: :one_for_one, name: XamalProxy.ServiceSupervisor},
+      {Task.Supervisor, name: XamalProxy.RequestSupervisor},
+      XamalProxy.Restorer,
+      XamalProxy.Listener
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: XamalProxy.Supervisor)
