@@ -17,8 +17,9 @@ The package is intentionally small and OTP-first:
 - `XamalProxy.Target` models one backend target and request counts.
 - `XamalProxy.HealthCheck` validates targets before activation.
 - `XamalProxy.Store` provides atomic ETF persistence helpers.
-- `XamalProxy.Listener` and `XamalProxy.ReverseProxy` provide a minimal,
-  replaceable HTTP/1.1 proxy prototype.
+- `XamalProxy.LiveryListener` provides Livery-based HTTP ingress.
+- `XamalProxy.Backend.Gun` performs backend requests through Gun.
+- `XamalProxy.Listener` remains as a minimal raw TCP fallback/prototype.
 
 A remote Xamal deployer can call the edge node through Erlang distribution:
 
@@ -71,10 +72,16 @@ Point the release at that file with ordinary application config:
 config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
 ```
 
-Set `:http_port` to start the current prototype TCP listener:
+Set `:livery_http_port` to start the Livery HTTP listener:
 
 ```elixir
-config :xamal_proxy, http_port: 8080
+config :xamal_proxy, livery_http_port: 8080
+```
+
+Set `:http_port` only if you want to start the old prototype TCP listener:
+
+```elixir
+config :xamal_proxy, http_port: 8081
 ```
 
 Set `:persistence_path` to restore saved service state on boot and persist after
@@ -100,8 +107,8 @@ mix ci
 
 ## Near-term roadmap
 
-1. Replace the prototype listener/proxy with the final Livery + Gun/Mint runtime.
-2. Add streaming request/response bodies and WebSocket support.
+1. Add streaming request/response bodies and backpressure to the Gun runtime.
+2. Add WebSocket support.
 3. Add first-class release/CLI scripts for safe distribution startup.
 4. Add operational telemetry and drain observability.
 5. Keep ACME as a separate supervised subsystem after routing is solid.

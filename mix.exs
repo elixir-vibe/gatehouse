@@ -2,7 +2,7 @@ defmodule XamalProxy.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/dmkenney/xamal_proxy"
+  @source_url "https://github.com/dannote/xamal_proxy"
 
   def project do
     [
@@ -25,7 +25,7 @@ defmodule XamalProxy.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :inets, :ssl],
+      extra_applications: [:logger, :inets, :ssl, :gun, :livery],
       mod: {XamalProxy.Application, []}
     ]
   end
@@ -47,7 +47,9 @@ defmodule XamalProxy.MixProject do
       {:credo, "~> 1.0", only: [:dev, :test], runtime: false},
       {:vibe_kit, "~> 0.1", only: [:dev, :test], runtime: false},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
-      {:ex_doc, "~> 0.34", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      {:livery, git: "https://github.com/benoitc/livery.git", branch: "main"},
+      {:gun, "~> 2.4"}
     ]
   end
 

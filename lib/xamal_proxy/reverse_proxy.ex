@@ -6,6 +6,7 @@ defmodule XamalProxy.ReverseProxy do
   accounting. It is not the final production proxy runtime.
   """
 
+  alias XamalProxy.Backend.Gun
   alias XamalProxy.Control
   alias XamalProxy.RouteTable
 
@@ -70,20 +71,16 @@ defmodule XamalProxy.ReverseProxy do
   defp proxy(socket, request, target_url) do
     uri = URI.merge(target_url, request.path)
     headers = outbound_headers(request.headers)
-    body = String.to_charlist(request.body)
-    url = uri |> URI.to_string() |> String.to_charlist()
 
-    case :httpc.request(method(request.method), request_tuple(url, headers, body), [],
-           body_format: :binary
-         ) do
-      {:ok, {{_version, status, reason}, response_headers, response_body}} ->
-        raw_headers = Enum.map(response_headers, fn {name, value} -> "#{name}: #{value}\r\n" end)
+    case Gun.request(uri, request.method, uri_path(uri), headers, request.body) do
+      {:ok, response} ->
+        raw_headers = Enum.map(response.headers, fn {name, value} -> "#{name}: #{value}\r\n" end)
 
         :gen_tcp.send(socket, [
-          "HTTP/1.1 #{status} #{reason}\r\n",
+          "HTTP/1.1 #{response.status} OK\r\n",
           raw_headers,
           "\r\n",
-          response_body
+          response.body
         ])
 
       {:error, reason} ->
@@ -94,24 +91,13 @@ defmodule XamalProxy.ReverseProxy do
   defp outbound_headers(headers) do
     headers
     |> Map.delete("host")
-    |> Enum.map(fn {name, value} -> {String.to_charlist(name), String.to_charlist(value)} end)
+    |> Enum.map(fn {name, value} -> {name, value} end)
   end
 
-  defp method("GET"), do: :get
-  defp method("POST"), do: :post
-  defp method("PUT"), do: :put
-  defp method("PATCH"), do: :patch
-  defp method("DELETE"), do: :delete
-  defp method("HEAD"), do: :head
-  defp method(_method), do: :get
-
-  defp request_tuple(url, headers, []) do
-    {url, headers}
-  end
-
-  defp request_tuple(url, headers, body) do
-    {url, headers, ~c"application/octet-stream", body}
-  end
+  defp uri_path(%URI{path: nil, query: nil}), do: "/"
+  defp uri_path(%URI{path: nil, query: query}), do: "/?#{query}"
+  defp uri_path(%URI{path: path, query: nil}), do: path
+  defp uri_path(%URI{path: path, query: query}), do: "#{path}?#{query}"
 
   defp respond(socket, status, body) do
     reason = if status == 404, do: "Not Found", else: "Bad Gateway"

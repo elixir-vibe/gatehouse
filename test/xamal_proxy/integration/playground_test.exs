@@ -3,36 +3,64 @@ defmodule XamalProxy.Integration.PlaygroundTest do
 
   Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)
 
-  test "routes requests to the active playground backend and switches on deploy" do
-    {:ok, blue} = DemoApp.Server.start_link(port: 0, label: "blue", name: :blue_demo_backend)
-    {:ok, green} = DemoApp.Server.start_link(port: 0, label: "green", name: :green_demo_backend)
-    {:ok, listener} = XamalProxy.Listener.start_link(port: 0, name: :playground_proxy_listener)
+  test "prototype listener routes requests to active playground backend and switches on deploy" do
+    assert_switches_with(&start_prototype_listener/0)
+  end
+
+  test "Livery listener routes requests to active playground backend and switches on deploy" do
+    assert_switches_with(&start_livery_listener/0)
+  end
+
+  defp assert_switches_with(start_listener) do
+    {:ok, blue} = DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:blue))
+    {:ok, green} = DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:green))
+    {:ok, listener} = start_listener.()
 
     blue_port = DemoApp.Server.port(blue)
     green_port = DemoApp.Server.port(green)
-    proxy_port = XamalProxy.Listener.port(listener)
+    proxy_port = listener_port(listener)
+    service = "playground-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
 
     assert {:ok, _state} =
              XamalProxy.Control.deploy(%{
-               service: "playground",
-               hosts: ["playground.test"],
+               service: service,
+               hosts: [host],
                target_id: "blue",
                target_url: "http://127.0.0.1:#{blue_port}",
                skip_health_check: true
              })
 
-    assert {:ok, "demo_app:blue\n"} = get(proxy_port, "playground.test")
+    assert {:ok, "demo_app:blue\n"} = get(proxy_port, host)
 
     assert {:ok, _state} =
              XamalProxy.Control.deploy(%{
-               service: "playground",
-               hosts: ["playground.test"],
+               service: service,
+               hosts: [host],
                target_id: "green",
                target_url: "http://127.0.0.1:#{green_port}",
                skip_health_check: true
              })
 
-    assert {:ok, "demo_app:green\n"} = get(proxy_port, "playground.test")
+    assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
+  end
+
+  defp start_prototype_listener do
+    XamalProxy.Listener.start_link(port: 0, name: unique_name(:prototype_listener))
+  end
+
+  defp start_livery_listener do
+    XamalProxy.LiveryListener.start_link(port: 0, name: unique_name(:livery_listener))
+  end
+
+  defp listener_port(pid) do
+    case :sys.get_state(pid) do
+      %{port: port} -> port
+    end
+  end
+
+  defp unique_name(prefix) do
+    String.to_atom("#{prefix}_#{System.unique_integer([:positive])}")
   end
 
   defp get(port, host) do
