@@ -16,7 +16,8 @@ end
     [:xamal_proxy, :deploy, :stop],
     [:xamal_proxy, :health_check, :stop],
     [:xamal_proxy, :proxy, :request, :stop],
-    [:xamal_proxy, :drain, :stop]
+    [:xamal_proxy, :drain, :stop],
+    [:xamal_proxy, :acme, :renewal, :stop]
   ],
   handler,
   nil
@@ -34,6 +35,7 @@ Useful first panels:
 - health-check failures grouped by `metadata.url`
 - backend pool opens/reaps/evictions grouped by `metadata.key`
 - active drain count from drain start/stop events once drain start is added
+- ACME renewal outcomes grouped by certificate `metadata.name`
 
 ## Deploy
 
@@ -89,6 +91,20 @@ Metadata:
 Metadata:
 
 - `:key` — `{scheme, host, port}`
+
+## ACME renewals
+
+```elixir
+[:xamal_proxy, :acme, :renewal, :tick]
+[:xamal_proxy, :acme, :renewal, :stop]
+```
+
+Stop metadata:
+
+- `:name`
+- `:result` — `:ok`, `{:skip, :not_due}`, or `{:error, reason}`
+
+A successful renewal persists the certificate and refreshes the Livery TLS listener.
 
 ## Proxy requests
 

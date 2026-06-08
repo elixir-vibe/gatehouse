@@ -22,6 +22,8 @@ defmodule XamalProxy.ConfigTlsTest do
     assert listener.port == 8443
     assert listener.cert == "CERT"
     assert listener.key == "KEY"
+    assert listener.cert_path == cert_path
+    assert listener.key_path == key_path
 
     File.rm_rf!(directory)
   end

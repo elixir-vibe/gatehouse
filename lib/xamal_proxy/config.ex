@@ -70,12 +70,17 @@ defmodule XamalProxy.Config do
 
   @spec listener(atom(), keyword()) :: :ok
   def listener(scheme, opts) when scheme in [:http, :https] and is_list(opts) do
+    cert_path = Keyword.get(opts, :cert)
+    key_path = Keyword.get(opts, :key)
+
     Builder.add_listener(%Listener{
       scheme: scheme,
       ip: Keyword.get(opts, :ip, {0, 0, 0, 0}),
       port: Keyword.get(opts, :port, default_port(scheme)),
-      cert: read_optional_file(Keyword.get(opts, :cert)),
-      key: read_optional_file(Keyword.get(opts, :key))
+      cert: read_optional_file(cert_path),
+      key: read_optional_file(key_path),
+      cert_path: cert_path,
+      key_path: key_path
     })
   end
 

@@ -20,7 +20,8 @@ The package is intentionally small and OTP-first:
 - `XamalProxy.LiveryListener` provides Livery-based HTTP ingress.
 - `XamalProxy.Backend.Gun` performs pooled backend requests and streams request/response bodies through Gun.
 - `XamalProxy.WebSocketProxy` bridges Livery WebSocket upgrades to backend Gun WebSocket sessions.
-- `XamalProxy.Acme.Provider` defines the future ACME adapter boundary.
+- `XamalProxy.ACME.Provider` defines the ACME adapter boundary.
+- `XamalProxy.ACME.RenewalScheduler` persists renewed certs and asks the listener to refresh TLS.
 
 A remote Xamal deployer can call the edge node through Erlang distribution:
 
@@ -80,6 +81,8 @@ Set `:livery_http_port` to start the Livery HTTP listener:
 config :xamal_proxy, livery_http_port: 8080
 ```
 
+HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically.
+
 Set `:persistence_path` to restore saved service state on boot and persist after
 deploys:
 
@@ -105,6 +108,6 @@ mix ci
 
 1. Add richer telemetry dashboards/examples.
 2. Add TLS listener wiring and certificate store.
-3. Implement an ACME provider adapter behind `XamalProxy.Acme.Provider`.
+3. Implement a real ACME provider adapter behind `XamalProxy.ACME.Provider`.
 4. Add load-balancing policies beyond one active target.
 5. Add full multi-target runtime load balancing beyond the config shape.

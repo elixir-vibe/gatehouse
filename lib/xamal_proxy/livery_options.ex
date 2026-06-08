@@ -40,10 +40,22 @@ defmodule XamalProxy.LiveryOptions do
 
   defp listener_to_opts(listener) do
     listener
+    |> reload_tls_files()
     |> Map.take([:ip, :port, :cert, :key])
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
   end
+
+  defp reload_tls_files(%{cert_path: cert_path, key_path: key_path} = listener) do
+    listener
+    |> put_file(:cert, cert_path)
+    |> put_file(:key, key_path)
+  end
+
+  defp reload_tls_files(listener), do: listener
+
+  defp put_file(listener, _key, nil), do: listener
+  defp put_file(listener, key, path), do: Map.put(listener, key, File.read!(path))
 
   defp reject_nil_protocols(opts) do
     opts
