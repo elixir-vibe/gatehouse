@@ -10,6 +10,7 @@ defmodule XamalProxy.Control do
 
   alias XamalProxy.Config
   alias XamalProxy.Config.Service, as: ConfigService
+  alias XamalProxy.HealthCheck
   alias XamalProxy.Service
   alias XamalProxy.Service.State
   alias XamalProxy.Store
@@ -103,9 +104,8 @@ defmodule XamalProxy.Control do
   end
 
   defp deploy_config_service(%ConfigService{balance: %{policy: :round_robin}} = service) do
-    targets = active_or_all_targets(service)
-
-    with {:ok, _pid} <- ensure_service(service.name) do
+    with {:ok, targets} <- balanced_targets(service),
+         {:ok, _pid} <- ensure_service(service.name) do
       Service.configure(service.name, %{
         hosts: service.hosts,
         balance: :round_robin,
@@ -134,10 +134,39 @@ defmodule XamalProxy.Control do
     end
   end
 
+  defp balanced_targets(%ConfigService{} = service) do
+    targets = active_or_all_targets(service)
+
+    if service.balance.options[:health] == :required do
+      healthy_targets(service, targets)
+    else
+      {:ok, targets}
+    end
+  end
+
   defp active_or_all_targets(%ConfigService{targets: targets}) do
     case Enum.filter(targets, & &1.active?) do
       [] -> targets
       active_targets -> active_targets
+    end
+  end
+
+  defp healthy_targets(service, targets) do
+    healthy =
+      Enum.filter(targets, fn target ->
+        case URI.new(target.url) do
+          {:ok, uri} ->
+            HealthCheck.check(uri, path: service.health.path, timeout: service.health.timeout) ==
+              :ok
+
+          {:error, _reason} ->
+            false
+        end
+      end)
+
+    case healthy do
+      [] -> {:error, :no_healthy_targets}
+      targets -> {:ok, targets}
     end
   end
 

@@ -14,6 +14,7 @@ defmodule XamalProxy.MixProject do
       source_url: @source_url,
       deps: deps(),
       aliases: aliases(),
+      elixirc_paths: elixirc_paths(Mix.env()),
       dialyzer: [
         plt_file: {:no_warn, "_build/dev/dialyxir_plt.plt"},
         plt_add_apps: [:mix]
@@ -23,6 +24,9 @@ defmodule XamalProxy.MixProject do
       releases: releases()
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support", "playground/demo_app/lib"]
+  defp elixirc_paths(_env), do: ["lib"]
 
   def application do
     [

@@ -3,9 +3,6 @@ defmodule XamalProxy.Integration.PlaygroundTest do
 
   alias XamalProxy.ACME.ChallengeStore
 
-  Code.require_file("../../../playground/demo_app/lib/demo_app/websocket_echo.ex", __DIR__)
-  Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)
-
   test "Livery listener serves HTTP-01 challenges before proxy routing" do
     {:ok, listener} = start_livery_listener()
     proxy_port = listener_port(listener)
@@ -46,6 +43,39 @@ defmodule XamalProxy.Integration.PlaygroundTest do
                skip_health_check: true
              })
 
+    assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
+  end
+
+  test "round robin config can require healthy targets" do
+    {:ok, green} =
+      DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:health_green))
+
+    {:ok, listener} = start_livery_listener()
+
+    proxy_port = listener_port(listener)
+    service = "healthy-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
+
+    config = %XamalProxy.Config{
+      services: [
+        %XamalProxy.Config.Service{
+          name: service,
+          hosts: [host],
+          balance: %{policy: :round_robin, options: [health: :required]},
+          targets: [
+            %XamalProxy.Config.Target{name: "bad", url: "http://127.0.0.1:9", active?: true},
+            %XamalProxy.Config.Target{
+              name: "green",
+              url: "http://127.0.0.1:#{DemoApp.Server.port(green)}",
+              active?: true
+            }
+          ]
+        }
+      ]
+    }
+
+    assert :ok = XamalProxy.Control.apply_config(config)
+    assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
     assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
   end
 
