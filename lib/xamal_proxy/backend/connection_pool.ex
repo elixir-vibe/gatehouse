@@ -13,6 +13,7 @@ defmodule XamalProxy.Backend.ConnectionPool do
 
   @sweep_interval 30_000
   @idle_timeout 60_000
+  @max_connections 128
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -90,10 +91,28 @@ defmodule XamalProxy.Backend.ConnectionPool do
     case Connection.open(uri, timeout) do
       {:ok, conn} ->
         Telemetry.execute([:backend, :pool, :open], %{}, %{key: key})
-        {:reply, {:ok, conn}, Map.put(state, key, %{conn: conn, last_used: now()})}
+
+        next_state =
+          state |> maybe_evict_oldest() |> Map.put(key, %{conn: conn, last_used: now()})
+
+        {:reply, {:ok, conn}, next_state}
 
       {:error, reason} ->
         {:reply, {:error, reason}, state}
+    end
+  end
+
+  defp maybe_evict_oldest(state) do
+    max_connections =
+      Application.get_env(:xamal_proxy, :backend_max_connections, @max_connections)
+
+    if map_size(state) < max_connections do
+      state
+    else
+      {key, %{conn: conn}} = Enum.min_by(state, fn {_key, entry} -> entry.last_used end)
+      :gun.close(conn)
+      Telemetry.execute([:backend, :pool, :evict], %{}, %{key: key})
+      Map.delete(state, key)
     end
   end
 

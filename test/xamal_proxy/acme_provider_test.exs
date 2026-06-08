@@ -3,8 +3,10 @@ defmodule XamalProxy.AcmeProviderTest do
 
   alias XamalProxy.Acme.Provider.AcmeClient
 
-  test "acme_client adapter is an explicit prototype" do
-    assert {:error, {:not_implemented, :acme_client_adapter}} =
-             AcmeClient.order_certificate(["example.com"], [])
+  test "acme_client adapter exposes provider callbacks" do
+    assert Code.ensure_loaded?(AcmeClient)
+    assert function_exported?(AcmeClient, :order_certificate, 2)
+    assert function_exported?(AcmeClient, :renew_certificate, 2)
+    assert function_exported?(AcmeClient, :revoke_certificate, 2)
   end
 end

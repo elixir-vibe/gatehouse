@@ -3,6 +3,7 @@ defmodule XamalProxy.LiveryHandler do
   Livery request handler for the proxy runtime.
   """
 
+  alias XamalProxy.Acme.ChallengeStore
   alias XamalProxy.Backend.Gun
   alias XamalProxy.Control
   alias XamalProxy.RouteTable
@@ -14,12 +15,16 @@ defmodule XamalProxy.LiveryHandler do
   def handle(request) do
     start = System.monotonic_time()
 
-    with {:ok, service, target_id} <- route(request),
+    with :proxy <- maybe_http01_challenge(request),
+         {:ok, service, target_id} <- route(request),
          {:ok, target} <- Control.checkout(service, target_id) do
       response = maybe_upgrade_websocket(request, target.url) || forward(request, target.url)
       emit_request_telemetry(start, service, target_id, response)
       finalize_response(response, service, target_id)
     else
+      {:ok, response} ->
+        response
+
       {:error, :not_found} ->
         emit_request_telemetry(start, nil, nil, 404)
         :livery_resp.text(404, "not found")
@@ -27,6 +32,29 @@ defmodule XamalProxy.LiveryHandler do
       {:error, reason} ->
         emit_request_telemetry(start, nil, nil, 502, %{error: reason})
         :livery_resp.text(502, "bad gateway: #{inspect(reason)}")
+    end
+  end
+
+  defp maybe_http01_challenge(request) do
+    path = :livery_req.path(request)
+
+    case String.split(to_string(path), "/.well-known/acme-challenge/", parts: 2) do
+      ["", token] -> serve_http01_challenge(request, token)
+      _other -> :proxy
+    end
+  end
+
+  defp serve_http01_challenge(request, token) do
+    domain =
+      <<"host">>
+      |> :livery_req.header(request, <<>>)
+      |> to_string()
+      |> String.split(":", parts: 2)
+      |> hd()
+
+    case ChallengeStore.get(domain, token) do
+      {:ok, key_authorization} -> {:ok, :livery_resp.text(200, key_authorization)}
+      :error -> {:ok, :livery_resp.text(404, "not found")}
     end
   end
 

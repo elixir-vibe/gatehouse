@@ -50,6 +50,7 @@ Metadata:
 [:xamal_proxy, :backend, :pool, :open]
 [:xamal_proxy, :backend, :pool, :invalidate]
 [:xamal_proxy, :backend, :pool, :reap]
+[:xamal_proxy, :backend, :pool, :evict]
 ```
 
 Metadata:

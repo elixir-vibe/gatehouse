@@ -1,8 +1,19 @@
 defmodule XamalProxy.Integration.PlaygroundTest do
   use ExUnit.Case, async: false
 
+  alias XamalProxy.Acme.ChallengeStore
+
   Code.require_file("../../../playground/demo_app/lib/demo_app/websocket_echo.ex", __DIR__)
   Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)
+
+  test "Livery listener serves HTTP-01 challenges before proxy routing" do
+    {:ok, listener} = start_livery_listener()
+    proxy_port = listener_port(listener)
+    host = "acme-#{System.unique_integer([:positive])}.test"
+
+    assert :ok = ChallengeStore.put(host, "token", "key-auth")
+    assert {:ok, "key-auth"} = get(proxy_port, host, "/.well-known/acme-challenge/token")
+  end
 
   test "Livery listener routes requests to active playground backend and switches on deploy" do
     {:ok, blue} = DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:blue))
