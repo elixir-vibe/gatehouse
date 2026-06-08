@@ -16,6 +16,11 @@ defmodule XamalProxy.Restorer do
 
   @impl GenServer
   def handle_continue(:restore, state) do
+    case load_static_config() do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("failed to load xamal_proxy config: #{inspect(reason)}")
+    end
+
     case XamalProxy.Control.restore_if_configured() do
       :ok ->
         :ok
@@ -28,5 +33,20 @@ defmodule XamalProxy.Restorer do
     end
 
     {:noreply, state}
+  end
+
+  defp load_static_config do
+    case Application.get_env(:xamal_proxy, :config_path) do
+      nil ->
+        :ok
+
+      path ->
+        path
+        |> XamalProxy.Config.read!()
+        |> XamalProxy.Control.apply_config()
+    end
+  rescue
+    exception in [ArgumentError, Code.LoadError, CompileError, File.Error, SyntaxError] ->
+      {:error, exception}
   end
 end

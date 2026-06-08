@@ -8,6 +8,8 @@ defmodule XamalProxy.Control do
       :rpc.call(:"xamal_proxy@host", XamalProxy.Control, :deploy, [spec], 60_000)
   """
 
+  alias XamalProxy.Config
+  alias XamalProxy.Config.Service, as: ConfigService
   alias XamalProxy.Service
   alias XamalProxy.Service.State
   alias XamalProxy.Store
@@ -46,6 +48,16 @@ defmodule XamalProxy.Control do
     Service.checkin(service, target_id)
   end
 
+  @spec apply_config(Config.t()) :: :ok | {:error, term()}
+  def apply_config(%Config{} = config) do
+    Enum.reduce_while(config.services, :ok, fn service, :ok ->
+      case deploy_config_service(service) do
+        {:ok, _state} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, {service.name, reason}}}
+      end
+    end)
+  end
+
   @spec snapshot() :: %{services: [State.t()], routes: [{String.t(), String.t(), String.t()}]}
   def snapshot do
     services =
@@ -75,6 +87,26 @@ defmodule XamalProxy.Control do
     case persistence_path() do
       nil -> :ok
       path -> restore(path)
+    end
+  end
+
+  defp deploy_config_service(%ConfigService{} = service) do
+    case ConfigService.active_target(service) do
+      nil ->
+        ensure_service(service.name)
+
+      target ->
+        deploy(%{
+          service: service.name,
+          hosts: service.hosts,
+          target_id: target.name,
+          target_url: target.url,
+          health_path: service.health.path,
+          health_timeout: service.health.timeout,
+          drain_timeout: service.drain.timeout,
+          metadata: target.metadata,
+          skip_health_check: true
+        })
     end
   end
 

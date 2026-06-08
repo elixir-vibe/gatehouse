@@ -43,7 +43,35 @@ Example deploy spec:
 
 ## Runtime configuration
 
-Set `:http_port` to start the prototype TCP listener:
+Use a minimal Caddy-like Elixir DSL. There is no root wrapper:
+
+```elixir
+import XamalProxy.Config
+
+state "/var/lib/xamal-proxy/state.etf"
+http port: 80
+https port: 443
+
+service :my_app do
+  host "example.com"
+  host "www.example.com"
+
+  target :blue, "http://127.0.0.1:4000", active: true
+  target :green, "http://127.0.0.1:4001"
+
+  health "/up", timeout: 5_000, interval: 1_000
+  drain 30_000
+  tls :auto
+end
+```
+
+Point the release at that file with ordinary application config:
+
+```elixir
+config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
+```
+
+Set `:http_port` to start the current prototype TCP listener:
 
 ```elixir
 config :xamal_proxy, http_port: 8080
