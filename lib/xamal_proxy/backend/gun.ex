@@ -2,7 +2,7 @@ defmodule XamalProxy.Backend.Gun do
   @moduledoc """
   Gun-backed backend client for the reverse proxy runtime.
 
-  `request/6` returns a buffered response for the raw TCP prototype.
+  `request/6` returns a buffered response for callers that need one.
   `stream/6` is used by the Livery runtime and streams backend response chunks
   through `livery_resp:stream/3`.
   """

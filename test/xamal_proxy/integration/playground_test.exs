@@ -3,44 +3,10 @@ defmodule XamalProxy.Integration.PlaygroundTest do
 
   Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)
 
-  test "prototype listener routes requests to active playground backend and switches on deploy" do
-    assert_switches_with(&start_prototype_listener/0)
-  end
-
   test "Livery listener routes requests to active playground backend and switches on deploy" do
-    assert_switches_with(&start_livery_listener/0)
-  end
-
-  test "Livery listener forwards streamed request and response bodies" do
-    {:ok, backend} =
-      DemoApp.Server.start_link(port: 0, label: "stream", name: unique_name(:stream))
-
-    {:ok, listener} = start_livery_listener()
-
-    backend_port = DemoApp.Server.port(backend)
-    proxy_port = listener_port(listener)
-    service = "stream-#{System.unique_integer([:positive])}"
-    host = "#{service}.test"
-
-    assert {:ok, _state} =
-             XamalProxy.Control.deploy(%{
-               service: service,
-               hosts: [host],
-               target_id: "stream",
-               target_url: "http://127.0.0.1:#{backend_port}",
-               skip_health_check: true
-             })
-
-    assert {:ok, "hello streaming request"} =
-             post(proxy_port, host, "/echo", "hello streaming request")
-
-    assert {:ok, "demo_app:stream\n"} = get(proxy_port, host, "/stream")
-  end
-
-  defp assert_switches_with(start_listener) do
     {:ok, blue} = DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:blue))
     {:ok, green} = DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:green))
-    {:ok, listener} = start_listener.()
+    {:ok, listener} = start_livery_listener()
 
     blue_port = DemoApp.Server.port(blue)
     green_port = DemoApp.Server.port(green)
@@ -71,8 +37,28 @@ defmodule XamalProxy.Integration.PlaygroundTest do
     assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
   end
 
-  defp start_prototype_listener do
-    XamalProxy.Listener.start_link(port: 0, name: unique_name(:prototype_listener))
+  test "Livery listener forwards request and streamed response bodies" do
+    {:ok, backend} =
+      DemoApp.Server.start_link(port: 0, label: "stream", name: unique_name(:stream))
+
+    {:ok, listener} = start_livery_listener()
+
+    backend_port = DemoApp.Server.port(backend)
+    proxy_port = listener_port(listener)
+    service = "stream-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
+
+    assert {:ok, _state} =
+             XamalProxy.Control.deploy(%{
+               service: service,
+               hosts: [host],
+               target_id: "stream",
+               target_url: "http://127.0.0.1:#{backend_port}",
+               skip_health_check: true
+             })
+
+    assert {:ok, "hello request"} = post(proxy_port, host, "/echo", "hello request")
+    assert {:ok, "demo_app:stream\n"} = get(proxy_port, host, "/stream")
   end
 
   defp start_livery_listener do
@@ -90,64 +76,29 @@ defmodule XamalProxy.Integration.PlaygroundTest do
   end
 
   defp get(port, host, path \\ "/") do
-    with {:ok, socket} <- :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false]),
-         :ok <-
-           :gen_tcp.send(socket, [
-             "GET ",
-             path,
-             " HTTP/1.1\r\nhost: ",
-             host,
-             "\r\nconnection: close\r\n\r\n"
-           ]),
-         {:ok, response} <- recv_all(socket, "") do
-      :gen_tcp.close(socket)
-      [headers, body] = String.split(response, "\r\n\r\n", parts: 2)
-      {:ok, decode_body(headers, body)}
+    url = ~c"http://127.0.0.1:#{port}#{path}"
+    headers = [{~c"host", String.to_charlist(host)}]
+
+    case :httpc.request(:get, {url, headers}, [], body_format: :binary) do
+      {:ok, {{_version, 200, _reason}, _headers, body}} -> {:ok, body}
+      {:ok, {{_version, status, reason}, _headers, body}} -> {:error, {status, reason, body}}
+      {:error, reason} -> {:error, reason}
     end
   end
 
   defp post(port, host, path, body) do
-    with {:ok, socket} <- :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false]),
-         :ok <-
-           :gen_tcp.send(socket, [
-             "POST ",
-             path,
-             " HTTP/1.1\r\nhost: ",
-             host,
-             "\r\ncontent-length: ",
-             Integer.to_string(byte_size(body)),
-             "\r\nconnection: close\r\n\r\n",
-             body
-           ]),
-         {:ok, response} <- recv_all(socket, "") do
-      :gen_tcp.close(socket)
-      [headers, response_body] = String.split(response, "\r\n\r\n", parts: 2)
-      {:ok, decode_body(headers, response_body)}
-    end
-  end
+    url = ~c"http://127.0.0.1:#{port}#{path}"
+    headers = [{~c"host", String.to_charlist(host)}]
 
-  defp decode_body(headers, body) do
-    if headers |> String.downcase() |> String.contains?("transfer-encoding: chunked") do
-      decode_chunks(body, "")
-    else
-      body
-    end
-  end
+    case :httpc.request(:post, {url, headers, ~c"text/plain", body}, [], body_format: :binary) do
+      {:ok, {{_version, 200, _reason}, _headers, response_body}} ->
+        {:ok, response_body}
 
-  defp decode_chunks("0\r\n\r\n", acc), do: acc
+      {:ok, {{_version, status, reason}, _headers, response_body}} ->
+        {:error, {status, reason, response_body}}
 
-  defp decode_chunks(body, acc) do
-    [size_hex, rest] = String.split(body, "\r\n", parts: 2)
-    size = String.to_integer(size_hex, 16)
-    <<chunk::binary-size(^size), "\r\n", tail::binary>> = rest
-    decode_chunks(tail, acc <> chunk)
-  end
-
-  defp recv_all(socket, acc) do
-    case :gen_tcp.recv(socket, 0, 5_000) do
-      {:ok, data} -> recv_all(socket, acc <> data)
-      {:error, :closed} -> {:ok, acc}
-      {:error, reason} -> {:error, reason}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end

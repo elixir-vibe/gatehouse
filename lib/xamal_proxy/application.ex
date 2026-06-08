@@ -11,7 +11,6 @@ defmodule XamalProxy.Application do
       {DynamicSupervisor, strategy: :one_for_one, name: XamalProxy.ServiceSupervisor},
       {Task.Supervisor, name: XamalProxy.RequestSupervisor},
       XamalProxy.Restorer,
-      XamalProxy.Listener,
       XamalProxy.LiveryListener
     ]
 

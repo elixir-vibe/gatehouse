@@ -19,7 +19,6 @@ The package is intentionally small and OTP-first:
 - `XamalProxy.Store` provides atomic ETF persistence helpers.
 - `XamalProxy.LiveryListener` provides Livery-based HTTP ingress.
 - `XamalProxy.Backend.Gun` performs backend requests and streams backend responses through Gun.
-- `XamalProxy.Listener` remains as a minimal raw TCP fallback/prototype.
 
 A remote Xamal deployer can call the edge node through Erlang distribution:
 
@@ -76,12 +75,6 @@ Set `:livery_http_port` to start the Livery HTTP listener:
 
 ```elixir
 config :xamal_proxy, livery_http_port: 8080
-```
-
-Set `:http_port` only if you want to start the old prototype TCP listener:
-
-```elixir
-config :xamal_proxy, http_port: 8081
 ```
 
 Set `:persistence_path` to restore saved service state on boot and persist after

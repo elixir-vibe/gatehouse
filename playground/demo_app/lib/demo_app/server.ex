@@ -1,11 +1,9 @@
 defmodule DemoApp.Server do
   @moduledoc """
-  Tiny HTTP server used as a playground backend for `xamal_proxy`.
+  Tiny Livery backend used as a playground target for `xamal_proxy`.
   """
 
   use GenServer
-
-  require Logger
 
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)
@@ -20,10 +18,11 @@ defmodule DemoApp.Server do
   def init(opts) do
     port = Keyword.fetch!(opts, :port)
     label = Keyword.get(opts, :label, "demo")
-    {:ok, socket} = :gen_tcp.listen(port, [:binary, packet: :raw, active: false, reuseaddr: true])
-    {:ok, actual_port} = :inet.port(socket)
-    send(self(), :accept)
-    {:ok, %{socket: socket, port: actual_port, label: label}}
+
+    case :livery.start_service(%{http: %{port: port}, handler: handler(label)}) do
+      {:ok, service} -> {:ok, %{service: service, port: h1_port(service)}}
+      {:error, reason} -> {:stop, reason}
+    end
   end
 
   @impl GenServer
@@ -32,96 +31,51 @@ defmodule DemoApp.Server do
   end
 
   @impl GenServer
-  def handle_info(:accept, %{socket: socket, label: label} = state) do
-    case :gen_tcp.accept(socket, 1_000) do
-      {:ok, client} ->
-        Task.start(fn -> respond(client, label) end)
-
-      {:error, :timeout} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("demo_app accept failed: #{inspect(reason)}")
-    end
-
-    send(self(), :accept)
-    {:noreply, state}
+  def terminate(_reason, %{service: service}) do
+    :livery.stop_service(service)
   end
 
-  defp respond(client, label) do
-    case read_request(client) do
-      {:ok, %{path: "/up"}} -> send_plain(client, "ok\n")
-      {:ok, %{path: "/echo", body: body}} -> send_plain(client, body)
-      {:ok, %{path: "/stream"}} -> send_chunked(client, ["demo_", "app:", label, "\n"])
-      {:ok, _request} -> send_plain(client, "demo_app:#{label}\n")
-      {:error, _reason} -> :ok
-    end
+  def terminate(_reason, _state), do: :ok
 
-    :gen_tcp.close(client)
-  end
+  defp handler(label) do
+    fn request ->
+      case :livery_req.path(request) do
+        "/up" ->
+          :livery_resp.text(200, "ok\n")
 
-  defp read_request(client) do
-    with {:ok, data} <- :gen_tcp.recv(client, 0, 5_000) do
-      parse_request(client, data)
-    end
-  end
+        "/echo" ->
+          :livery_resp.text(200, request_body(request))
 
-  defp parse_request(client, data) do
-    [head | body_parts] = String.split(data, "\r\n\r\n", parts: 2)
-    [request_line | headers] = String.split(head, "\r\n")
-    [_method, path, _version] = String.split(request_line, " ", parts: 3)
-    body = read_body(client, headers, Enum.join(body_parts, "\r\n\r\n"))
-    {:ok, %{path: path, body: body}}
-  end
+        "/stream" ->
+          :livery_resp.stream(200, [{"content-type", "text/plain"}], fn emit ->
+            Enum.each(["demo_", "app:", label, "\n"], &emit.(&1))
+          end)
 
-  defp read_body(client, headers, body) do
-    content_length = content_length(headers)
-    missing = content_length - byte_size(body)
-
-    if missing > 0 do
-      {:ok, rest} = :gen_tcp.recv(client, missing, 5_000)
-      body <> rest
-    else
-      body
-    end
-  end
-
-  defp content_length(headers) do
-    headers
-    |> Enum.find_value("0", fn header ->
-      case String.split(header, ":", parts: 2) do
-        [name, value] ->
-          if String.downcase(String.trim(name)) == "content-length", do: String.trim(value)
-
-        _other ->
-          nil
+        _path ->
+          :livery_resp.text(200, "demo_app:#{label}\n")
       end
-    end)
-    |> String.to_integer()
+    end
   end
 
-  defp send_plain(client, body) do
-    :gen_tcp.send(client, [
-      "HTTP/1.1 200 OK\r\n",
-      "content-type: text/plain\r\n",
-      "content-length: #{byte_size(body)}\r\n",
-      "connection: close\r\n",
-      "\r\n",
-      body
-    ])
+  defp request_body(request) do
+    case :livery_req.body(request) do
+      :empty ->
+        <<>>
+
+      {:buffered, body} ->
+        body
+
+      {:stream, reader} ->
+        case :livery_body.read_all(reader, 30_000) do
+          {:ok, body, _reader} -> body
+          {:error, reason, _reader} -> "read error: #{inspect(reason)}"
+        end
+    end
   end
 
-  defp send_chunked(client, chunks) do
-    encoded_chunks = Enum.map(chunks, &[Integer.to_string(byte_size(&1), 16), "\r\n", &1, "\r\n"])
-
-    :gen_tcp.send(client, [
-      "HTTP/1.1 200 OK\r\n",
-      "content-type: text/plain\r\n",
-      "transfer-encoding: chunked\r\n",
-      "connection: close\r\n",
-      "\r\n",
-      encoded_chunks,
-      "0\r\n\r\n"
-    ])
+  defp h1_port(service) do
+    service
+    |> :livery.which_listeners()
+    |> Map.fetch!(:h1)
   end
 end
