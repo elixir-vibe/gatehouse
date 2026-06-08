@@ -13,16 +13,27 @@ defmodule XamalProxy.Control do
   alias XamalProxy.Service
   alias XamalProxy.Service.State
   alias XamalProxy.Store
+  alias XamalProxy.Telemetry
 
   @type deploy_spec :: Service.deploy_spec()
 
   @spec deploy(deploy_spec()) :: {:ok, State.t()} | {:error, term()}
   def deploy(%{service: service} = spec) when is_binary(service) do
-    with {:ok, _pid} <- ensure_service(service),
-         {:ok, state} <- Service.deploy(service, spec),
-         :ok <- persist_if_configured() do
-      {:ok, state}
-    end
+    start = System.monotonic_time()
+
+    result =
+      with {:ok, _pid} <- ensure_service(service),
+           {:ok, state} <- Service.deploy(service, spec),
+           :ok <- persist_if_configured() do
+        {:ok, state}
+      end
+
+    Telemetry.execute([:deploy, :stop], %{duration: System.monotonic_time() - start}, %{
+      service: service,
+      result: telemetry_result(result)
+    })
+
+    result
   end
 
   @spec get_service(String.t()) :: {:ok, State.t()} | {:error, :not_found}
@@ -134,6 +145,9 @@ defmodule XamalProxy.Control do
       path -> save(path)
     end
   end
+
+  defp telemetry_result({:ok, _state}), do: :ok
+  defp telemetry_result({:error, reason}), do: {:error, reason}
 
   defp persistence_path do
     Application.get_env(:xamal_proxy, :persistence_path)

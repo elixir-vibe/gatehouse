@@ -9,6 +9,7 @@ defmodule XamalProxy.Service do
   alias XamalProxy.RouteTable
   alias XamalProxy.Service.State
   alias XamalProxy.Target
+  alias XamalProxy.Telemetry
 
   @default_drain_timeout 30_000
   @default_health_path "/up"
@@ -139,11 +140,22 @@ defmodule XamalProxy.Service do
 
   defp maybe_health_check(_target, %{skip_health_check: true}), do: :ok
 
-  defp maybe_health_check(%Target{url: url}, spec) do
-    HealthCheck.check(url,
-      path: Map.get(spec, :health_path, @default_health_path),
-      timeout: Map.get(spec, :health_timeout, @default_health_timeout)
-    )
+  defp maybe_health_check(%Target{id: target_id, url: url}, spec) do
+    start = System.monotonic_time()
+
+    result =
+      HealthCheck.check(url,
+        path: Map.get(spec, :health_path, @default_health_path),
+        timeout: Map.get(spec, :health_timeout, @default_health_timeout)
+      )
+
+    Telemetry.execute([:health_check, :stop], %{duration: System.monotonic_time() - start}, %{
+      target_id: target_id,
+      url: URI.to_string(url),
+      result: result
+    })
+
+    result
   end
 
   defp checkout_target(%State{active_target: %Target{id: id} = target} = state, id) do
@@ -206,6 +218,10 @@ defmodule XamalProxy.Service do
   end
 
   defp drop_old_target(%State{old_targets: old_targets} = state, target_id) do
+    if Map.has_key?(old_targets, target_id) do
+      Telemetry.execute([:drain, :stop], %{}, %{service: state.id, target_id: target_id})
+    end
+
     %{state | old_targets: Map.delete(old_targets, target_id)}
   end
 

@@ -25,7 +25,7 @@ defmodule XamalProxy.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :inets, :ssl, :gun, :livery],
+      extra_applications: [:logger, :inets, :ssl, :telemetry, :gun, :livery],
       mod: {XamalProxy.Application, []}
     ]
   end

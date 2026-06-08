@@ -1,0 +1,6 @@
+import Config
+
+config :xamal_proxy,
+  config_path: System.get_env("XAMAL_PROXY_CONFIG", "/etc/xamal-proxy.exs"),
+  persistence_path: System.get_env("XAMAL_PROXY_STATE", "/var/lib/xamal-proxy/state.etf"),
+  livery_http_port: String.to_integer(System.get_env("XAMAL_PROXY_HTTP_PORT", "80"))
