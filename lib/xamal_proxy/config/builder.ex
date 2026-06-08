@@ -69,6 +69,10 @@ defmodule XamalProxy.Config.Builder do
     update_service(&%{&1 | tls: tls})
   end
 
+  def put_balance(balance) do
+    update_service(&%{&1 | balance: balance})
+  end
+
   defp current_config do
     Process.get(@config_key) ||
       raise ArgumentError, "XamalProxy.Config DSL was used outside eval!/1 or read!/1"

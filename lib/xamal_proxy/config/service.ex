@@ -11,6 +11,7 @@ defmodule XamalProxy.Config.Service do
     :tls,
     hosts: [],
     targets: [],
+    balance: %{policy: :active, options: []},
     health: %{path: "/up", timeout: 5_000, interval: 1_000},
     drain: %{timeout: 30_000}
   ]
@@ -19,6 +20,7 @@ defmodule XamalProxy.Config.Service do
           name: String.t(),
           hosts: [String.t()],
           targets: [Target.t()],
+          balance: %{policy: :active | :round_robin, options: keyword()},
           health: %{path: String.t(), timeout: timeout(), interval: timeout()},
           drain: %{timeout: timeout()},
           tls: :auto | false | keyword() | nil

@@ -20,6 +20,7 @@ defmodule XamalProxy.ConfigTest do
         target :blue, "http://127.0.0.1:4000", active: true
         target :green, "http://127.0.0.1:4001"
 
+        balance :round_robin
         health "/up", timeout: 5_000, interval: 1_000
         drain 30_000
         tls :auto
@@ -33,6 +34,7 @@ defmodule XamalProxy.ConfigTest do
     assert [service] = config.services
     assert service.name == "my_app"
     assert service.hosts == ["example.com", "www.example.com"]
+    assert service.balance == %{policy: :round_robin, options: []}
     assert service.health == %{path: "/up", timeout: 5_000, interval: 1_000}
     assert service.drain == %{timeout: 30_000}
     assert service.tls == :auto

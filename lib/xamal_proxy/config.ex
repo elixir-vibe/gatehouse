@@ -73,7 +73,9 @@ defmodule XamalProxy.Config do
     Builder.add_listener(%Listener{
       scheme: scheme,
       ip: Keyword.get(opts, :ip, {0, 0, 0, 0}),
-      port: Keyword.get(opts, :port, default_port(scheme))
+      port: Keyword.get(opts, :port, default_port(scheme)),
+      cert: read_optional_file(Keyword.get(opts, :cert)),
+      key: read_optional_file(Keyword.get(opts, :key))
     })
   end
 
@@ -90,6 +92,11 @@ defmodule XamalProxy.Config do
       active?: Keyword.get(opts, :active, false),
       metadata: Keyword.get(opts, :metadata, %{})
     })
+  end
+
+  @spec balance(atom(), keyword()) :: :ok
+  def balance(policy, opts \\ []) when policy in [:active, :round_robin] and is_list(opts) do
+    Builder.put_balance(%{policy: policy, options: opts})
   end
 
   @spec health(String.t(), keyword()) :: :ok
@@ -120,4 +127,7 @@ defmodule XamalProxy.Config do
 
   defp normalize_name(name) when is_atom(name), do: Atom.to_string(name)
   defp normalize_name(name) when is_binary(name), do: name
+
+  defp read_optional_file(nil), do: nil
+  defp read_optional_file(path) when is_binary(path), do: File.read!(path)
 end

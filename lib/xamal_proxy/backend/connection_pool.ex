@@ -2,14 +2,17 @@ defmodule XamalProxy.Backend.ConnectionPool do
   @moduledoc """
   Small Gun connection pool keyed by target origin.
 
-  The pool keeps one Gun connection per `{scheme, host, port}`. Gun owns request
-  multiplexing/pipelining details; callers still receive stream messages in the
-  process that started each request.
+  The pool keeps one Gun connection per `{scheme, host, port}` and reaps idle
+  connections periodically.
   """
 
   use GenServer
 
   alias XamalProxy.Backend.Connection
+  alias XamalProxy.Telemetry
+
+  @sweep_interval 30_000
+  @idle_timeout 60_000
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %{}, name: __MODULE__)
@@ -26,16 +29,20 @@ defmodule XamalProxy.Backend.ConnectionPool do
   end
 
   @impl GenServer
-  def init(state), do: {:ok, state}
+  def init(state) do
+    schedule_sweep()
+    {:ok, state}
+  end
 
   @impl GenServer
   def handle_call({:checkout, uri, timeout}, _from, state) do
     key = key(uri)
 
     case Map.fetch(state, key) do
-      {:ok, conn} when is_pid(conn) ->
+      {:ok, %{conn: conn} = entry} when is_pid(conn) ->
         if Process.alive?(conn) do
-          {:reply, {:ok, conn}, state}
+          next_state = Map.put(state, key, %{entry | last_used: now()})
+          {:reply, {:ok, conn}, next_state}
         else
           open_and_store(uri, timeout, key, state)
         end
@@ -50,8 +57,9 @@ defmodule XamalProxy.Backend.ConnectionPool do
     key = key(uri)
 
     case Map.pop(state, key) do
-      {conn, next_state} when is_pid(conn) ->
+      {%{conn: conn}, next_state} when is_pid(conn) ->
         :gun.close(conn)
+        Telemetry.execute([:backend, :pool, :invalidate], %{}, %{key: key})
         {:noreply, next_state}
 
       {_missing, next_state} ->
@@ -59,12 +67,45 @@ defmodule XamalProxy.Backend.ConnectionPool do
     end
   end
 
+  @impl GenServer
+  def handle_info(:sweep, state) do
+    idle_timeout = Application.get_env(:xamal_proxy, :backend_idle_timeout, @idle_timeout)
+    cutoff = now() - idle_timeout
+
+    {expired, active} =
+      Enum.split_with(state, fn {_key, %{conn: conn, last_used: last_used}} ->
+        last_used < cutoff or not Process.alive?(conn)
+      end)
+
+    Enum.each(expired, fn {key, %{conn: conn}} ->
+      :gun.close(conn)
+      Telemetry.execute([:backend, :pool, :reap], %{}, %{key: key})
+    end)
+
+    schedule_sweep()
+    {:noreply, Map.new(active)}
+  end
+
   defp open_and_store(uri, timeout, key, state) do
     case Connection.open(uri, timeout) do
-      {:ok, conn} -> {:reply, {:ok, conn}, Map.put(state, key, conn)}
-      {:error, reason} -> {:reply, {:error, reason}, state}
+      {:ok, conn} ->
+        Telemetry.execute([:backend, :pool, :open], %{}, %{key: key})
+        {:reply, {:ok, conn}, Map.put(state, key, %{conn: conn, last_used: now()})}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
+
+  defp schedule_sweep do
+    Process.send_after(
+      self(),
+      :sweep,
+      Application.get_env(:xamal_proxy, :backend_sweep_interval, @sweep_interval)
+    )
+  end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   defp key(%URI{scheme: scheme, host: host, port: port}) do
     {scheme || "http", host, port || default_port(scheme)}

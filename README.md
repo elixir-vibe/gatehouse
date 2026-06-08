@@ -52,7 +52,7 @@ import XamalProxy.Config
 
 state "/var/lib/xamal-proxy/state.etf"
 http port: 80
-https port: 443
+https port: 443, cert: "/etc/xamal-proxy/certs/example.crt", key: "/etc/xamal-proxy/certs/example.key"
 
 service :my_app do
   host "example.com"
@@ -61,6 +61,7 @@ service :my_app do
   target :blue, "http://127.0.0.1:4000", active: true
   target :green, "http://127.0.0.1:4001"
 
+  balance :round_robin
   health "/up", timeout: 5_000, interval: 1_000
   drain 30_000
   tls :auto
@@ -106,4 +107,4 @@ mix ci
 2. Add TLS listener wiring and certificate store.
 3. Implement an ACME provider adapter behind `XamalProxy.Acme.Provider`.
 4. Add load-balancing policies beyond one active target.
-5. Add persistent Gun pool metrics and idle connection reaping.
+5. Add full multi-target runtime load balancing beyond the config shape.

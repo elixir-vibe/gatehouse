@@ -133,6 +133,7 @@ defmodule XamalProxy.Integration.PlaygroundTest do
   defp listener_port(pid) do
     case :sys.get_state(pid) do
       %{port: port} -> port
+      %{ports: %{h1: port}} -> port
     end
   end
 

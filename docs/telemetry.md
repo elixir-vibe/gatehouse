@@ -44,6 +44,18 @@ Metadata:
 - `:service`
 - `:target_id`
 
+## Backend connection pool
+
+```elixir
+[:xamal_proxy, :backend, :pool, :open]
+[:xamal_proxy, :backend, :pool, :invalidate]
+[:xamal_proxy, :backend, :pool, :reap]
+```
+
+Metadata:
+
+- `:key` — `{scheme, host, port}`
+
 ## Proxy requests
 
 ```elixir
