@@ -31,6 +31,7 @@ ExecStart=/opt/xamal-proxy/bin/xamal_proxy start
 ExecStop=/opt/xamal-proxy/bin/xamal_proxy stop
 Restart=always
 RestartSec=5
+LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 ```

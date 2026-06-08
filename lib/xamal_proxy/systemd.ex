@@ -28,7 +28,8 @@ defmodule XamalProxy.Systemd do
           exec_start: "#{opts.release_path}/bin/xamal_proxy start",
           exec_stop: "#{opts.release_path}/bin/xamal_proxy stop",
           restart: :always,
-          restart_sec: 5
+          restart_sec: 5,
+          LimitNOFILE: 1_048_576
         ],
         install: [wanted_by: "multi-user.target"]
       )
