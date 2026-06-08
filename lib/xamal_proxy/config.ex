@@ -19,10 +19,11 @@ defmodule XamalProxy.Config do
 
   alias XamalProxy.Config.{Builder, Listener, Service, Target}
 
-  defstruct state_path: nil, listeners: [], services: []
+  defstruct state_path: nil, acme: nil, listeners: [], services: []
 
   @type t :: %__MODULE__{
           state_path: Path.t() | nil,
+          acme: keyword() | nil,
           listeners: [Listener.t()],
           services: [Service.t()]
         }
@@ -50,6 +51,11 @@ defmodule XamalProxy.Config do
   @spec state(Path.t()) :: :ok
   def state(path) when is_binary(path) do
     Builder.put_state_path(path)
+  end
+
+  @spec acme(keyword()) :: :ok
+  def acme(opts) when is_list(opts) do
+    Builder.put_acme(opts)
   end
 
   @spec http(keyword()) :: :ok

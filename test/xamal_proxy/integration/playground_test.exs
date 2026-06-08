@@ -1,6 +1,7 @@
 defmodule XamalProxy.Integration.PlaygroundTest do
   use ExUnit.Case, async: false
 
+  Code.require_file("../../../playground/demo_app/lib/demo_app/websocket_echo.ex", __DIR__)
   Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)
 
   test "Livery listener routes requests to active playground backend and switches on deploy" do
@@ -61,6 +62,70 @@ defmodule XamalProxy.Integration.PlaygroundTest do
     assert {:ok, "demo_app:stream\n"} = get(proxy_port, host, "/stream")
   end
 
+  test "Livery listener proxies WebSocket frames" do
+    {:ok, backend} = DemoApp.Server.start_link(port: 0, label: "ws", name: unique_name(:ws))
+    {:ok, listener} = start_livery_listener()
+
+    backend_port = DemoApp.Server.port(backend)
+    proxy_port = listener_port(listener)
+    service = "ws-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
+
+    assert {:ok, _state} =
+             XamalProxy.Control.deploy(%{
+               service: service,
+               hosts: [host],
+               target_id: "ws",
+               target_url: "http://127.0.0.1:#{backend_port}",
+               skip_health_check: true
+             })
+
+    assert {:ok, "hello-ws"} = websocket_echo(proxy_port, host, "/ws", "hello-ws")
+  end
+
+  test "drain keeps old target while streamed proxied request is active" do
+    {:ok, blue} =
+      DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:drain_blue))
+
+    {:ok, green} =
+      DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:drain_green))
+
+    {:ok, listener} = start_livery_listener()
+
+    proxy_port = listener_port(listener)
+    service = "drain-#{System.unique_integer([:positive])}"
+    host = "#{service}.test"
+
+    assert {:ok, _state} =
+             XamalProxy.Control.deploy(%{
+               service: service,
+               hosts: [host],
+               target_id: "blue",
+               target_url: "http://127.0.0.1:#{DemoApp.Server.port(blue)}",
+               skip_health_check: true
+             })
+
+    task = Task.async(fn -> get(proxy_port, host, "/slow") end)
+    Process.sleep(50)
+
+    assert {:ok, state} =
+             XamalProxy.Control.deploy(%{
+               service: service,
+               hosts: [host],
+               target_id: "green",
+               target_url: "http://127.0.0.1:#{DemoApp.Server.port(green)}",
+               skip_health_check: true
+             })
+
+    assert Map.has_key?(state.old_targets, "blue")
+    assert {:ok, "start-blue\n"} = Task.await(task, 1_000)
+
+    assert eventually(fn ->
+             {:ok, state} = XamalProxy.Control.get_service(service)
+             refute Map.has_key?(state.old_targets, "blue")
+           end)
+  end
+
   defp start_livery_listener do
     XamalProxy.LiveryListener.start_link(port: 0, name: unique_name(:livery_listener))
   end
@@ -84,6 +149,45 @@ defmodule XamalProxy.Integration.PlaygroundTest do
       {:ok, {{_version, status, reason}, _headers, body}} -> {:error, {status, reason, body}}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp websocket_echo(port, host, path, message) do
+    with {:ok, conn} <- :gun.open(~c"127.0.0.1", port, %{transport: :tcp, protocols: [:http]}),
+         {:ok, _protocol} <- :gun.await_up(conn, 5_000) do
+      stream = :gun.ws_upgrade(conn, path, [{"host", host}])
+
+      result = await_websocket_echo(conn, stream, message)
+
+      :gun.close(conn)
+      result
+    end
+  end
+
+  defp await_websocket_echo(conn, stream, message) do
+    case :gun.await(conn, stream, 5_000) do
+      {:upgrade, _protocols, _headers} -> send_websocket_echo(conn, stream, message)
+      other -> {:error, other}
+    end
+  end
+
+  defp send_websocket_echo(conn, stream, message) do
+    :gun.ws_send(conn, stream, {:text, message})
+
+    case :gun.await(conn, stream, 5_000) do
+      {:ws, {:text, echoed}} -> {:ok, echoed}
+      other -> {:error, other}
+    end
+  end
+
+  defp eventually(assertion, attempts \\ 20)
+
+  defp eventually(assertion, attempts) when attempts > 0 do
+    assertion.()
+    true
+  rescue
+    ExUnit.AssertionError ->
+      Process.sleep(10)
+      eventually(assertion, attempts - 1)
   end
 
   defp post(port, host, path, body) do

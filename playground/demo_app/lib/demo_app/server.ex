@@ -51,6 +51,16 @@ defmodule DemoApp.Server do
             Enum.each(["demo_", "app:", label, "\n"], &emit.(&1))
           end)
 
+        "/slow" ->
+          :livery_resp.stream(200, [{"content-type", "text/plain"}], fn emit ->
+            emit.("start-")
+            Process.sleep(150)
+            emit.("#{label}\n")
+          end)
+
+        "/ws" ->
+          :livery_ws.upgrade(request, DemoApp.WebSocketEcho, %{})
+
         _path ->
           :livery_resp.text(200, "demo_app:#{label}\n")
       end

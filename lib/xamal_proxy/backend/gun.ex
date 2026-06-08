@@ -7,7 +7,7 @@ defmodule XamalProxy.Backend.Gun do
   through `livery_resp:stream/3`.
   """
 
-  alias XamalProxy.Backend.{Connection, Response}
+  alias XamalProxy.Backend.{ConnectionPool, Response}
 
   @default_timeout 5_000
 
@@ -21,10 +21,10 @@ defmodule XamalProxy.Backend.Gun do
   def request(%URI{} = base_uri, method, path, headers, body, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
-    with {:ok, conn} <- Connection.open(base_uri, timeout),
+    with {:ok, conn} <- ConnectionPool.checkout(base_uri, timeout),
          stream <- :gun.request(conn, method, path, headers, body),
          result <- await_buffered_response(conn, stream, timeout) do
-      :gun.close(conn)
+      invalidate_on_error(base_uri, result)
       result
     end
   end
@@ -34,25 +34,25 @@ defmodule XamalProxy.Backend.Gun do
   def stream(%URI{} = base_uri, method, path, headers, body, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
 
-    with {:ok, conn} <- Connection.open(base_uri, timeout),
+    with {:ok, conn} <- ConnectionPool.checkout(base_uri, timeout),
          {:ok, stream} <- send_request(conn, method, path, headers, body, timeout) do
       case :gun.await(conn, stream, timeout) do
         {:response, :fin, status, response_headers} ->
-          :gun.close(conn)
           {:ok, {:full, %Response{status: status, headers: response_headers, body: <<>>}}}
 
         {:response, :nofin, status, response_headers} ->
-          {:ok, {:stream, status, response_headers, stream_producer(conn, stream, timeout)}}
+          {:ok,
+           {:stream, status, response_headers, stream_producer(base_uri, conn, stream, timeout)}}
 
         {:error, reason} ->
-          :gun.close(conn)
+          ConnectionPool.invalidate(base_uri)
           {:error, reason}
       end
     end
   end
 
   defp send_request(conn, method, path, headers, {:stream, reader}, timeout) do
-    stream = :gun.headers(conn, method, path, headers)
+    stream = :gun.headers(conn, method, path, streaming_headers(headers))
 
     case send_request_stream(conn, stream, reader, timeout) do
       :ok -> {:ok, stream}
@@ -62,6 +62,12 @@ defmodule XamalProxy.Backend.Gun do
 
   defp send_request(conn, method, path, headers, body, _timeout) do
     {:ok, :gun.request(conn, method, path, headers, body)}
+  end
+
+  defp streaming_headers(headers) do
+    Enum.reject(headers, fn {name, _value} ->
+      String.downcase(to_string(name)) == "content-length"
+    end)
   end
 
   defp send_request_stream(conn, stream, reader, timeout) do
@@ -79,13 +85,11 @@ defmodule XamalProxy.Backend.Gun do
     end
   end
 
-  defp stream_producer(conn, stream, timeout) do
+  defp stream_producer(base_uri, conn, stream, timeout) do
     fn emit ->
-      try do
-        emit_stream(conn, stream, timeout, emit)
-      after
-        :gun.close(conn)
-      end
+      result = emit_stream(conn, stream, timeout, emit)
+      if result != :ok, do: ConnectionPool.invalidate(base_uri)
+      :ok
     end
   end
 
@@ -94,7 +98,7 @@ defmodule XamalProxy.Backend.Gun do
       {:data, :nofin, data} ->
         case emit.(data) do
           :ok -> emit_stream(conn, stream, timeout, emit)
-          {:error, _reason} -> :ok
+          {:error, reason} -> {:error, reason}
         end
 
       {:data, :fin, data} ->
@@ -104,8 +108,8 @@ defmodule XamalProxy.Backend.Gun do
       {:trailers, _trailers} ->
         :ok
 
-      {:error, _reason} ->
-        :ok
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -125,4 +129,7 @@ defmodule XamalProxy.Backend.Gun do
         {:error, reason}
     end
   end
+
+  defp invalidate_on_error(base_uri, {:error, _reason}), do: ConnectionPool.invalidate(base_uri)
+  defp invalidate_on_error(_base_uri, {:ok, _response}), do: :ok
 end

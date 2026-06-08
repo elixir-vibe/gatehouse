@@ -9,6 +9,7 @@ defmodule XamalProxy.ConfigTest do
       import XamalProxy.Config
 
       state "/var/lib/xamal-proxy/state.etf"
+      acme provider: XamalProxy.Acme.Provider, email: "ops@example.com"
       http port: 80
       https port: 443
 
@@ -26,6 +27,7 @@ defmodule XamalProxy.ConfigTest do
       """)
 
     assert config.state_path == "/var/lib/xamal-proxy/state.etf"
+    assert config.acme[:email] == "ops@example.com"
     assert Enum.map(config.listeners, & &1.scheme) == [:http, :https]
 
     assert [service] = config.services

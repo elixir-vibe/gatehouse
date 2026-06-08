@@ -19,7 +19,8 @@ defmodule XamalProxy.MixProject do
         plt_add_apps: [:mix]
       ],
       package: package(),
-      docs: docs()
+      docs: docs(),
+      releases: releases()
     ]
   end
 
@@ -49,7 +50,8 @@ defmodule XamalProxy.MixProject do
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:livery, git: "https://github.com/benoitc/livery.git", branch: "main"},
-      {:gun, "~> 2.4"}
+      {:gun, "~> 2.4"},
+      {:telemetry, "~> 1.3"}
     ]
   end
 
@@ -63,6 +65,15 @@ defmodule XamalProxy.MixProject do
         "dialyzer",
         "ex_dna --max-clones 0",
         "reach.check --arch --smells"
+      ]
+    ]
+  end
+
+  defp releases do
+    [
+      xamal_proxy: [
+        include_executables_for: [:unix],
+        applications: [xamal_proxy: :permanent]
       ]
     ]
   end

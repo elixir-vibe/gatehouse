@@ -18,7 +18,9 @@ The package is intentionally small and OTP-first:
 - `XamalProxy.HealthCheck` validates targets before activation.
 - `XamalProxy.Store` provides atomic ETF persistence helpers.
 - `XamalProxy.LiveryListener` provides Livery-based HTTP ingress.
-- `XamalProxy.Backend.Gun` performs backend requests and streams backend responses through Gun.
+- `XamalProxy.Backend.Gun` performs pooled backend requests and streams request/response bodies through Gun.
+- `XamalProxy.WebSocketProxy` bridges Livery WebSocket upgrades to backend Gun WebSocket sessions.
+- `XamalProxy.Acme.Provider` defines the future ACME adapter boundary.
 
 A remote Xamal deployer can call the edge node through Erlang distribution:
 
@@ -100,8 +102,8 @@ mix ci
 
 ## Near-term roadmap
 
-1. Replace buffered inbound request-body forwarding with true chunk-by-chunk forwarding.
-2. Add full WebSocket integration tests against a playground WebSocket backend.
-3. Add first-class release/CLI scripts for safe distribution startup.
-4. Add richer telemetry dashboards/examples.
-5. Keep ACME as a separate supervised subsystem after routing is solid.
+1. Add richer telemetry dashboards/examples.
+2. Add TLS listener wiring and certificate store.
+3. Implement an ACME provider adapter behind `XamalProxy.Acme.Provider`.
+4. Add load-balancing policies beyond one active target.
+5. Add persistent Gun pool metrics and idle connection reaping.

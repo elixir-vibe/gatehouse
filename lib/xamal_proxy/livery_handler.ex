@@ -16,13 +16,9 @@ defmodule XamalProxy.LiveryHandler do
 
     with {:ok, service, target_id} <- route(request),
          {:ok, target} <- Control.checkout(service, target_id) do
-      try do
-        response = maybe_upgrade_websocket(request, target.url) || forward(request, target.url)
-        emit_request_telemetry(start, service, target_id, response)
-        response
-      after
-        Control.checkin(service, target_id)
-      end
+      response = maybe_upgrade_websocket(request, target.url) || forward(request, target.url)
+      emit_request_telemetry(start, service, target_id, response)
+      finalize_response(response, service, target_id)
     else
       {:error, :not_found} ->
         emit_request_telemetry(start, nil, nil, 404)
@@ -82,6 +78,33 @@ defmodule XamalProxy.LiveryHandler do
     end
   end
 
+  defp finalize_response(response, service, target_id) do
+    case :livery_resp.body(response) do
+      {:chunked, producer} ->
+        :livery_resp.with_body(
+          {:chunked, checkin_producer(producer, service, target_id)},
+          response
+        )
+
+      {:sse, producer} ->
+        :livery_resp.with_body({:sse, checkin_producer(producer, service, target_id)}, response)
+
+      _body ->
+        Control.checkin(service, target_id)
+        response
+    end
+  end
+
+  defp checkin_producer(producer, service, target_id) do
+    fn emit ->
+      try do
+        producer.(emit)
+      after
+        Control.checkin(service, target_id)
+      end
+    end
+  end
+
   defp path_with_query(request) do
     path = :livery_req.path(request)
 
@@ -94,12 +117,7 @@ defmodule XamalProxy.LiveryHandler do
   defp request_body(:empty), do: <<>>
   defp request_body({:buffered, body}), do: body
 
-  defp request_body({:stream, reader}) do
-    case :livery_body.read_all(reader, 30_000) do
-      {:ok, body, _next_reader} -> body
-      {:error, _reason, _next_reader} -> <<>>
-    end
-  end
+  defp request_body({:stream, reader}), do: {:stream, reader}
 
   defp outbound_headers(headers) do
     headers

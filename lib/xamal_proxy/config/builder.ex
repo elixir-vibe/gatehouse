@@ -30,6 +30,10 @@ defmodule XamalProxy.Config.Builder do
     update_config(&%{&1 | listeners: &1.listeners ++ [listener]})
   end
 
+  def put_acme(opts) do
+    update_config(&%{&1 | acme: opts})
+  end
+
   def begin_service(name) do
     if Process.get(@service_key) do
       raise ArgumentError, "nested service blocks are not supported"
