@@ -7,8 +7,8 @@ defmodule XamalProxy.Application do
   def start(_type, _args) do
     children = [
       XamalProxy.RouteTable,
-      XamalProxy.Acme.ChallengeStore,
-      XamalProxy.Acme.RenewalScheduler,
+      XamalProxy.ACME.ChallengeStore,
+      XamalProxy.ACME.RenewalScheduler,
       XamalProxy.Backend.ConnectionPool,
       {Registry, keys: :unique, name: XamalProxy.ServiceRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: XamalProxy.ServiceSupervisor},

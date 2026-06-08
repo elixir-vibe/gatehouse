@@ -1,7 +1,7 @@
 defmodule XamalProxy.Integration.PlaygroundTest do
   use ExUnit.Case, async: false
 
-  alias XamalProxy.Acme.ChallengeStore
+  alias XamalProxy.ACME.ChallengeStore
 
   Code.require_file("../../../playground/demo_app/lib/demo_app/websocket_echo.ex", __DIR__)
   Code.require_file("../../../playground/demo_app/lib/demo_app/server.ex", __DIR__)

@@ -9,7 +9,7 @@ defmodule XamalProxy.ConfigTest do
       import XamalProxy.Config
 
       state "/var/lib/xamal-proxy/state.etf"
-      acme provider: XamalProxy.Acme.Provider, email: "ops@example.com"
+      acme provider: XamalProxy.ACME.Provider, email: "ops@example.com"
       http port: 80
       https port: 443
 

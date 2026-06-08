@@ -1,4 +1,4 @@
-defmodule XamalProxy.Acme.ChallengeStore do
+defmodule XamalProxy.ACME.ChallengeStore do
   @moduledoc """
   In-memory HTTP-01 challenge token store.
   """

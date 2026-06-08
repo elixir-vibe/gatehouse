@@ -3,9 +3,10 @@ defmodule XamalProxy.LiveryHandler do
   Livery request handler for the proxy runtime.
   """
 
-  alias XamalProxy.Acme.ChallengeStore
+  alias XamalProxy.ACME.ChallengeStore
   alias XamalProxy.Backend.Gun
   alias XamalProxy.Control
+  alias XamalProxy.Livery.{Request, Response, WebSocket}
   alias XamalProxy.RouteTable
   alias XamalProxy.Telemetry
 
@@ -27,95 +28,76 @@ defmodule XamalProxy.LiveryHandler do
 
       {:error, :not_found} ->
         emit_request_telemetry(start, nil, nil, 404)
-        :livery_resp.text(404, "not found")
+        Response.text(404, "not found")
 
       {:error, reason} ->
         emit_request_telemetry(start, nil, nil, 502, %{error: reason})
-        :livery_resp.text(502, "bad gateway: #{inspect(reason)}")
+        Response.text(502, "bad gateway: #{inspect(reason)}")
     end
   end
 
   defp maybe_http01_challenge(request) do
-    path = :livery_req.path(request)
-
-    case String.split(to_string(path), "/.well-known/acme-challenge/", parts: 2) do
+    case String.split(to_string(Request.path(request)), "/.well-known/acme-challenge/", parts: 2) do
       ["", token] -> serve_http01_challenge(request, token)
       _other -> :proxy
     end
   end
 
   defp serve_http01_challenge(request, token) do
-    domain =
-      <<"host">>
-      |> :livery_req.header(request, <<>>)
-      |> to_string()
-      |> String.split(":", parts: 2)
-      |> hd()
-
-    case ChallengeStore.get(domain, token) do
-      {:ok, key_authorization} -> {:ok, :livery_resp.text(200, key_authorization)}
-      :error -> {:ok, :livery_resp.text(404, "not found")}
+    case ChallengeStore.get(Request.host(request), token) do
+      {:ok, key_authorization} -> {:ok, Response.text(200, key_authorization)}
+      :error -> {:ok, Response.text(404, "not found")}
     end
   end
 
   defp route(request) do
-    <<"host">>
-    |> :livery_req.header(request, <<>>)
-    |> to_string()
-    |> String.split(":", parts: 2)
-    |> hd()
+    request
+    |> Request.host()
     |> RouteTable.lookup()
   end
 
   defp maybe_upgrade_websocket(request, target_url) do
     if websocket_upgrade?(request) do
-      :livery_ws.upgrade(request, XamalProxy.WebSocketProxy, %{
+      WebSocket.upgrade(request, XamalProxy.WebSocketProxy, %{
         target_url: target_url,
         path: path_with_query(request),
-        headers: outbound_headers(:livery_req.headers(request))
+        headers: outbound_headers(Request.headers(request))
       })
     end
   end
 
   defp websocket_upgrade?(request) do
-    connection = <<"connection">> |> :livery_req.header(request, <<>>) |> String.downcase()
-    upgrade = <<"upgrade">> |> :livery_req.header(request, <<>>) |> String.downcase()
+    connection = request |> Request.header(<<"connection">>) |> String.downcase()
+    upgrade = request |> Request.header(<<"upgrade">>) |> String.downcase()
 
     String.contains?(connection, "upgrade") and upgrade == "websocket"
   end
 
   defp forward(request, target_url) do
-    method = :livery_req.method(request)
+    method = Request.method(request)
     path = path_with_query(request)
-    headers = outbound_headers(:livery_req.headers(request))
-    body = request_body(:livery_req.body(request))
+    headers = outbound_headers(Request.headers(request))
+    body = request_body(Request.body(request))
 
     case Gun.stream(target_url, method, path, headers, body) do
       {:ok, {:full, response}} ->
-        :livery_resp.new(
-          response.status,
-          response_headers(response.headers),
-          {:full, response.body}
-        )
+        Response.new(response.status, response_headers(response.headers), {:full, response.body})
 
       {:ok, {:stream, status, headers, producer}} ->
-        :livery_resp.stream(status, response_headers(headers), producer)
+        Response.stream(status, response_headers(headers), producer)
 
       {:error, reason} ->
-        :livery_resp.text(502, "bad gateway: #{inspect(reason)}")
+        Response.text(502, "bad gateway: #{inspect(reason)}")
     end
   end
 
   defp finalize_response(response, service, target_id) do
-    case :livery_resp.body(response) do
+    case Response.body(response) do
       {:chunked, producer} ->
-        :livery_resp.with_body(
-          {:chunked, checkin_producer(producer, service, target_id)},
-          response
-        )
+        Response.with_body({:chunked, checkin_producer(producer, service, target_id)}, response)
 
       {:sse, producer} ->
-        :livery_resp.with_body({:sse, checkin_producer(producer, service, target_id)}, response)
+        Response.with_body({:sse, checkin_producer(producer, service, target_id)}, response)
 
       _body ->
         Control.checkin(service, target_id)
@@ -134,9 +116,9 @@ defmodule XamalProxy.LiveryHandler do
   end
 
   defp path_with_query(request) do
-    path = :livery_req.path(request)
+    path = Request.path(request)
 
-    case :livery_req.query(request) do
+    case Request.query(request) do
       query when query in [nil, "", <<>>] -> path
       query -> [path, ??, query] |> IO.iodata_to_binary()
     end
@@ -144,7 +126,6 @@ defmodule XamalProxy.LiveryHandler do
 
   defp request_body(:empty), do: <<>>
   defp request_body({:buffered, body}), do: body
-
   defp request_body({:stream, reader}), do: {:stream, reader}
 
   defp outbound_headers(headers) do
@@ -174,7 +155,7 @@ defmodule XamalProxy.LiveryHandler do
   end
 
   defp response_status(response) when is_integer(response), do: response
-  defp response_status(response), do: :livery_resp.status(response)
+  defp response_status(response), do: Response.status(response)
 
   defp to_binary(value) when is_binary(value), do: value
   defp to_binary(value), do: to_string(value)

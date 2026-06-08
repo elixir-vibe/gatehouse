@@ -1,4 +1,4 @@
-defmodule XamalProxy.Acme.RenewalScheduler do
+defmodule XamalProxy.ACME.RenewalScheduler do
   @moduledoc """
   Periodic ACME renewal scheduler placeholder.
 

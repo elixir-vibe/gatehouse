@@ -1,4 +1,4 @@
-defmodule XamalProxy.Acme.Provider do
+defmodule XamalProxy.ACME.Provider do
   @moduledoc """
   Behaviour for future ACME integrations.
 

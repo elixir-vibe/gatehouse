@@ -48,7 +48,7 @@ defmodule XamalProxy.LiveryListener do
 
   @impl GenServer
   def terminate(_reason, %{service: pid}) do
-    :livery.stop_service(pid)
+    XamalProxy.Livery.stop_service(pid)
   end
 
   def terminate(_reason, _state), do: :ok
@@ -61,8 +61,8 @@ defmodule XamalProxy.LiveryListener do
   end
 
   defp start_service(opts) do
-    case :livery.start_service(opts) do
-      {:ok, pid} -> {:ok, %{service: pid, ports: :livery.which_listeners(pid)}}
+    case XamalProxy.Livery.start_service(opts) do
+      {:ok, pid} -> {:ok, %{service: pid, ports: XamalProxy.Livery.listeners(pid)}}
       {:error, reason} -> {:stop, reason}
     end
   end

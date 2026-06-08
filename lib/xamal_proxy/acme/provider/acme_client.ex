@@ -1,16 +1,16 @@
-defmodule XamalProxy.Acme.Provider.AcmeClient do
+defmodule XamalProxy.ACME.Provider.AcmeClient do
   @moduledoc """
   ACME provider adapter backed by the Erlang `acme_client` package.
   """
 
-  @behaviour XamalProxy.Acme.Provider
+  @behaviour XamalProxy.ACME.Provider
 
-  alias XamalProxy.Acme.ChallengeStore
+  alias XamalProxy.ACME.ChallengeStore
 
   @default_directory_url "https://acme-staging-v02.api.letsencrypt.org/directory"
   @default_timeout 60_000
 
-  @impl XamalProxy.Acme.Provider
+  @impl XamalProxy.ACME.Provider
   def order_certificate(domains, opts) when is_list(domains) and is_list(opts) do
     request = %{
       dir_url: Keyword.get(opts, :directory_url, @default_directory_url),
@@ -33,14 +33,14 @@ defmodule XamalProxy.Acme.Provider.AcmeClient do
     run_acme_client(request, Keyword.get(opts, :timeout, @default_timeout))
   end
 
-  @impl XamalProxy.Acme.Provider
+  @impl XamalProxy.ACME.Provider
   def renew_certificate(_certificate, opts) when is_list(opts) do
     opts
     |> Keyword.fetch!(:domains)
     |> order_certificate(opts)
   end
 
-  @impl XamalProxy.Acme.Provider
+  @impl XamalProxy.ACME.Provider
   def revoke_certificate(_certificate, opts) when is_list(opts) do
     {:error, {:not_implemented, :revoke, opts}}
   end

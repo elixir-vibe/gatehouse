@@ -8,6 +8,7 @@ defmodule XamalProxy.Backend.Gun do
   """
 
   alias XamalProxy.Backend.{ConnectionPool, Response}
+  alias XamalProxy.Livery.Body
 
   @default_timeout 5_000
 
@@ -71,7 +72,7 @@ defmodule XamalProxy.Backend.Gun do
   end
 
   defp send_request_stream(conn, stream, reader, timeout) do
-    case :livery_body.read(reader, timeout) do
+    case Body.read(reader, timeout) do
       {:ok, chunk, next_reader} ->
         :ok = :gun.data(conn, stream, :nofin, chunk)
         send_request_stream(conn, stream, next_reader, timeout)

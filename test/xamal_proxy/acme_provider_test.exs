@@ -1,7 +1,7 @@
-defmodule XamalProxy.AcmeProviderTest do
+defmodule XamalProxy.ACMEProviderTest do
   use ExUnit.Case, async: true
 
-  alias XamalProxy.Acme.Provider.AcmeClient
+  alias XamalProxy.ACME.Provider.AcmeClient
 
   test "acme_client adapter exposes provider callbacks" do
     assert Code.ensure_loaded?(AcmeClient)
