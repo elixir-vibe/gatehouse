@@ -50,14 +50,16 @@ defmodule XamalProxy.MixProject do
       {:ex_dna, "~> 1.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:vibe_kit, "== 0.1.2", runtime: false, override: true},
+      {:vibe_kit, "== 0.1.2", only: [:dev, :test], runtime: false, override: true},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       {:livery, git: "https://github.com/benoitc/livery.git", branch: "main"},
+      {:ex_acme, "~> 0.7"},
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
-      # Temporary path dependency until systemd is published to Hex.
-      {:systemd, path: "../systemd"}
+      {:req, "~> 0.5.8", override: true},
+      # Temporary path dependency until systemdkit is published to Hex.
+      {:systemdkit, path: "../systemd"}
     ]
   end
 

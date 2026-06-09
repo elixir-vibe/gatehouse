@@ -90,6 +90,17 @@ deploys:
 config :xamal_proxy, persistence_path: "/var/lib/xamal-proxy/state.etf"
 ```
 
+## ACME
+
+`XamalProxy.ACME.Provider.ExAcme` is the primary Elixir ACME adapter. It uses
+`ex_acme` for account registration, HTTP-01 authorization, CSR finalization,
+certificate fetch, and revocation. HTTP-01 tokens are published through
+`XamalProxy.ACME.ChallengeStore`, which the Livery handler serves before proxy
+routing.
+
+The older `XamalProxy.ACME.Provider.AcmeClient` adapter remains as an optional
+boundary for the Erlang `acme_client` package, but it is not the default path.
+
 ## Development
 
 This project was created with Igniter and VibeKit:
