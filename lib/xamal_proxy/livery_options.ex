@@ -4,7 +4,7 @@ defmodule XamalProxy.LiveryOptions do
   alias XamalProxy.Config.Listener
 
   def service_options(handler) do
-    listeners = Application.get_env(:xamal_proxy, :listeners, legacy_listeners())
+    listeners = Application.get_env(:xamal_proxy, :listeners, [])
 
     listeners
     |> Enum.reduce(%{handler: handler}, &put_listener/2)
@@ -61,30 +61,5 @@ defmodule XamalProxy.LiveryOptions do
     opts
     |> Enum.reject(fn {_key, value} -> is_nil(value) end)
     |> Map.new()
-  end
-
-  defp legacy_listeners do
-    [
-      legacy_http_listener(),
-      legacy_https_listener()
-    ]
-    |> Enum.reject(&is_nil/1)
-  end
-
-  defp legacy_http_listener do
-    case Application.get_env(:xamal_proxy, :livery_http_port) do
-      nil -> nil
-      port -> %Listener{scheme: :http, ip: {0, 0, 0, 0}, port: port}
-    end
-  end
-
-  defp legacy_https_listener do
-    case Application.get_env(:xamal_proxy, :livery_https) do
-      nil ->
-        nil
-
-      opts ->
-        struct!(Listener, Keyword.merge([scheme: :https, ip: {0, 0, 0, 0}, port: 443], opts))
-    end
   end
 end

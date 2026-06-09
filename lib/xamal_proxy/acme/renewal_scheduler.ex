@@ -8,7 +8,7 @@ defmodule XamalProxy.ACME.RenewalScheduler do
         %{
           name: "example.com",
           domains: ["example.com"],
-          provider: XamalProxy.ACME.Provider.AcmeClient,
+          provider: XamalProxy.ACME.Provider.ExAcme,
           provider_opts: [email: "ops@example.com"],
           store: XamalProxy.CertificateStore.File,
           store_opts: [directory: "/var/lib/xamal-proxy/certs"],

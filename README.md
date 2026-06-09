@@ -75,12 +75,6 @@ Point the release at that file with ordinary application config:
 config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
 ```
 
-Set `:livery_http_port` to start the Livery HTTP listener:
-
-```elixir
-config :xamal_proxy, livery_http_port: 8080
-```
-
 HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically.
 
 Set `:persistence_path` to restore saved service state on boot and persist after
@@ -97,9 +91,6 @@ config :xamal_proxy, persistence_path: "/var/lib/xamal-proxy/state.etf"
 certificate fetch, and revocation. HTTP-01 tokens are published through
 `XamalProxy.ACME.ChallengeStore`, which the Livery handler serves before proxy
 routing.
-
-The older `XamalProxy.ACME.Provider.AcmeClient` adapter remains as an optional
-boundary for the Erlang `acme_client` package, but it is not the default path.
 
 Static config now turns `tls :auto` services into renewal jobs automatically:
 

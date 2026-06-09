@@ -3,7 +3,7 @@ defmodule XamalProxy.ACME.Provider do
   Behaviour for future ACME integrations.
 
   ACME is intentionally outside the proxy switching core. Implementations can
-  wrap `acme_client`, `ex_acme`, or a different backend without changing routing
+  wrap `ex_acme` or a different backend without changing routing
   and drain logic.
   """
 
