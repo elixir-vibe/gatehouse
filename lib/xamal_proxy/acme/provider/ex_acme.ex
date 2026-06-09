@@ -34,13 +34,14 @@ defmodule XamalProxy.ACME.Provider.ExAcme do
          {:ok, private_key} <- certificate_key(opts),
          {:ok, csr} <- Order.to_csr(order, private_key),
          {:ok, finalized_order} <- finalize_order(order, csr, account_key, client, opts),
-         {:ok, certs} <- fetch_certificates(finalized_order, account_key, client, opts) do
+         {:ok, ready_order} <- poll_order(finalized_order, account_key, client, opts),
+         {:ok, certs} <- fetch_certificates(ready_order, account_key, client, opts) do
       {:ok,
        %{
          cert_pem: certificates_to_pem(certs),
          key_pem: X509.PrivateKey.to_pem(private_key),
          account_key: account_key,
-         raw: %{order: finalized_order, certificates: certs}
+         raw: %{order: ready_order, certificates: certs}
        }}
     end
   end
@@ -228,8 +229,44 @@ defmodule XamalProxy.ACME.Provider.ExAcme do
     |> normalize_retry()
   end
 
-  defp fetch_certificates(%Order{certificate_url: nil}, _account_key, _client, _opts),
-    do: {:error, :missing_certificate_url}
+  defp poll_order(
+         %Order{status: "valid", certificate_url: certificate_url} = order,
+         _account_key,
+         _client,
+         _opts
+       )
+       when is_binary(certificate_url),
+       do: {:ok, order}
+
+  defp poll_order(order, account_key, client, opts) do
+    attempts = Keyword.get(opts, :poll_attempts, @default_poll_attempts)
+    interval = Keyword.get(opts, :poll_interval, @default_poll_interval)
+    poll_order(order.url, account_key, client, attempts, interval)
+  end
+
+  defp poll_order(_url, _account_key, _client, 0, _interval), do: {:error, :max_attempts_reached}
+
+  defp poll_order(url, account_key, client, attempts, interval) do
+    case ExAcme.fetch_order(url, account_key, client) do
+      {:ok, %Order{status: "valid", certificate_url: certificate_url} = order}
+      when is_binary(certificate_url) ->
+        {:ok, order}
+
+      {:ok, %Order{status: "invalid"} = order} ->
+        {:error, {:order_failed, order}}
+
+      {:ok, %Order{}} ->
+        Process.sleep(interval)
+        poll_order(url, account_key, client, attempts - 1, interval)
+
+      {:retry_after, seconds} ->
+        Process.sleep(seconds * 1_000)
+        poll_order(url, account_key, client, attempts - 1, interval)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   defp fetch_certificates(%Order{certificate_url: certificate_url}, account_key, client, _opts) do
     ExAcme.fetch_certificates(certificate_url, account_key, client)

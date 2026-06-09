@@ -101,6 +101,16 @@ routing.
 The older `XamalProxy.ACME.Provider.AcmeClient` adapter remains as an optional
 boundary for the Erlang `acme_client` package, but it is not the default path.
 
+Pebble integration coverage is opt-in because it needs Docker or a separately
+running Pebble server:
+
+```sh
+XAMAL_PROXY_PEBBLE=1 mix test test/xamal_proxy/acme_pebble_integration_test.exs
+```
+
+The test starts `ghcr.io/letsencrypt/pebble:latest` with
+`PEBBLE_VA_ALWAYS_VALID=1` unless `XAMAL_PROXY_PEBBLE_EXTERNAL=1` is set.
+
 ## Development
 
 This project was created with Igniter and VibeKit:
