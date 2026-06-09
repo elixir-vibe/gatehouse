@@ -101,6 +101,23 @@ routing.
 The older `XamalProxy.ACME.Provider.AcmeClient` adapter remains as an optional
 boundary for the Erlang `acme_client` package, but it is not the default path.
 
+Static config now turns `tls :auto` services into renewal jobs automatically:
+
+```elixir
+acme email: "ops@example.com",
+  cert_directory: "/var/lib/xamal-proxy/certs",
+  account_directory: "/var/lib/xamal-proxy/acme"
+
+service :my_app do
+  host "example.com"
+  host "www.example.com"
+  tls :auto
+end
+```
+
+The generated job stores certificates under `cert_directory` and persists the
+ACME account key under `account_directory` so renewals reuse the same account.
+
 Pebble integration coverage is opt-in because it needs a local Pebble server:
 
 ```sh

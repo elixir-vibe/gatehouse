@@ -42,6 +42,39 @@ defmodule XamalProxy.ConfigTest do
     assert Config.Service.active_target(service).name == "blue"
   end
 
+  test "builds ACME renewal jobs for auto TLS services" do
+    config =
+      Config.eval!("""
+      import XamalProxy.Config
+
+      acme email: "ops@example.com",
+        directory_url: :lets_encrypt_staging,
+        cert_directory: "/tmp/certs",
+        account_directory: "/tmp/accounts"
+
+      service :secure do
+        host "Example.COM"
+        host "www.example.com"
+        tls :auto
+      end
+
+      service :plain do
+        host "plain.example.com"
+        tls false
+      end
+      """)
+
+    assert [job] = XamalProxy.ACME.Config.jobs(config)
+    assert job.name == "example.com"
+    assert job.domains == ["example.com", "www.example.com"]
+    assert job.provider == XamalProxy.ACME.Provider.ExAcme
+    assert job.store == XamalProxy.CertificateStore.File
+    assert job.store_opts == [directory: "/tmp/certs"]
+    assert job.provider_opts[:email] == "ops@example.com"
+    assert job.provider_opts[:directory_url] == :lets_encrypt_staging
+    assert job.provider_opts[:account_key_path] == "/tmp/accounts/example.com.account.term"
+  end
+
   test "applies active static targets to the runtime control plane" do
     config =
       Config.eval!("""

@@ -101,9 +101,28 @@ defmodule XamalProxy.ACME.Provider.ExAcme do
   end
 
   defp account_key(client, opts) do
-    case Keyword.get(opts, :account_key) do
-      nil -> register_account(client, opts)
-      account_key -> {:ok, account_key}
+    cond do
+      account_key = Keyword.get(opts, :account_key) ->
+        {:ok, account_key}
+
+      account_key_path = Keyword.get(opts, :account_key_path) ->
+        account_key_from_path(client, opts, account_key_path)
+
+      true ->
+        register_account(client, opts)
+    end
+  end
+
+  defp account_key_from_path(client, opts, path) do
+    case read_account_key(path) do
+      {:ok, account_key} ->
+        {:ok, account_key}
+
+      {:error, _reason} ->
+        with {:ok, account_key} <- register_account(client, opts),
+             :ok <- write_account_key(path, account_key) do
+          {:ok, account_key}
+        end
     end
   end
 
@@ -121,6 +140,20 @@ defmodule XamalProxy.ACME.Provider.ExAcme do
     |> case do
       {:ok, _account, account_key} -> {:ok, account_key}
       other -> normalize_retry(other)
+    end
+  end
+
+  defp read_account_key(path) do
+    with {:ok, binary} <- File.read(path) do
+      {:ok, :erlang.binary_to_term(binary, [:safe])}
+    end
+  rescue
+    ArgumentError -> {:error, :invalid_account_key}
+  end
+
+  defp write_account_key(path, account_key) do
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      File.write(path, :erlang.term_to_binary(account_key))
     end
   end
 
