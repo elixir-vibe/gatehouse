@@ -5,6 +5,8 @@ defmodule XamalProxy.CertificateStore.File do
 
   @behaviour XamalProxy.CertificateStore
 
+  alias XamalProxy.Certificate.PEM
+
   @impl XamalProxy.CertificateStore
   def get(name, opts) when is_binary(name) do
     directory = Keyword.fetch!(opts, :directory)
@@ -13,7 +15,11 @@ defmodule XamalProxy.CertificateStore.File do
 
     with {:ok, cert} <- File.read(cert_path),
          {:ok, key} <- File.read(key_path) do
-      {:ok, Map.merge(read_metadata(directory, name), %{cert: cert, key: key})}
+      {:ok,
+       Map.merge(read_metadata(directory, name), certificate_metadata(cert), fn _key, _old, new ->
+         new
+       end)
+       |> Map.merge(%{cert: cert, key: key})}
     end
   end
 
@@ -27,6 +33,13 @@ defmodule XamalProxy.CertificateStore.File do
          :ok <- File.write(Path.join(directory, "#{name}.crt"), cert_pem),
          :ok <- File.write(Path.join(directory, "#{name}.key"), key_pem) do
       write_metadata(directory, name, Map.drop(cert, [:cert, :key, :cert_pem, :key_pem]))
+    end
+  end
+
+  defp certificate_metadata(cert) do
+    case PEM.metadata(cert) do
+      {:ok, metadata} -> metadata
+      {:error, _reason} -> %{}
     end
   end
 
