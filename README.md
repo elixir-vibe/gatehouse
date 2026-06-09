@@ -53,7 +53,10 @@ import XamalProxy.Config
 
 state "/var/lib/xamal-proxy/state.etf"
 http port: 80
-https port: 443, cert: "/etc/xamal-proxy/certs/example.crt", key: "/etc/xamal-proxy/certs/example.key"
+https port: 443,
+  cert: "/etc/xamal-proxy/certs/example.crt",
+  key: "/etc/xamal-proxy/certs/example.key",
+  sni: [cert_directory: "/var/lib/xamal-proxy/certs"]
 
 service :my_app do
   host "example.com"
@@ -75,7 +78,7 @@ Point the release at that file with ordinary application config:
 config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
 ```
 
-HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically.
+HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically. The `sni` option builds an Erlang/OTP `:ssl` SNI callback that selects `domain.crt` / `domain.key` from the certificate directory.
 
 Set `:persistence_path` to restore saved service state on boot and persist after
 deploys:

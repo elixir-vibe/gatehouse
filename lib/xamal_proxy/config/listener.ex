@@ -4,7 +4,7 @@ defmodule XamalProxy.Config.Listener do
   """
 
   @enforce_keys [:scheme, :ip, :port]
-  defstruct [:scheme, :ip, :port, :cert, :key, :cert_path, :key_path]
+  defstruct [:scheme, :ip, :port, :cert, :key, :cert_path, :key_path, ssl_opts: []]
 
   @type t :: %__MODULE__{
           scheme: :http | :https,
@@ -13,6 +13,7 @@ defmodule XamalProxy.Config.Listener do
           cert: binary() | nil,
           key: binary() | nil,
           cert_path: Path.t() | nil,
-          key_path: Path.t() | nil
+          key_path: Path.t() | nil,
+          ssl_opts: keyword()
         }
 end

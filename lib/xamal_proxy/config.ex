@@ -18,6 +18,7 @@ defmodule XamalProxy.Config do
   """
 
   alias XamalProxy.Config.{Builder, Listener, Service, Target}
+  alias XamalProxy.TLS.SNI
 
   defstruct state_path: nil, acme: nil, listeners: [], services: []
 
@@ -72,6 +73,7 @@ defmodule XamalProxy.Config do
   def listener(scheme, opts) when scheme in [:http, :https] and is_list(opts) do
     cert_path = Keyword.get(opts, :cert)
     key_path = Keyword.get(opts, :key)
+    ssl_opts = Keyword.get(opts, :ssl_opts, []) ++ sni_opts(Keyword.get(opts, :sni))
 
     Builder.add_listener(%Listener{
       scheme: scheme,
@@ -80,7 +82,8 @@ defmodule XamalProxy.Config do
       cert: read_optional_file(cert_path),
       key: read_optional_file(key_path),
       cert_path: cert_path,
-      key_path: key_path
+      key_path: key_path,
+      ssl_opts: ssl_opts
     })
   end
 
@@ -129,6 +132,9 @@ defmodule XamalProxy.Config do
 
   defp default_port(:http), do: 80
   defp default_port(:https), do: 443
+
+  defp sni_opts(nil), do: []
+  defp sni_opts(opts) when is_list(opts), do: SNI.ssl_opts(opts)
 
   defp normalize_name(name) when is_atom(name), do: Atom.to_string(name)
   defp normalize_name(name) when is_binary(name), do: name

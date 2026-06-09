@@ -41,7 +41,7 @@ defmodule XamalProxy.Restorer do
         Application.put_env(
           :xamal_proxy,
           :listeners,
-          XamalProxy.LiveryOptions.from_config_listeners(config.listeners)
+          XamalProxy.LiveryOptions.from_config(config)
         )
 
         Application.put_env(:xamal_proxy, :acme_certificates, XamalProxy.ACME.Config.jobs(config))

@@ -14,7 +14,10 @@ defmodule XamalProxy.ConfigTlsTest do
     config =
       XamalProxy.Config.eval!("""
       import XamalProxy.Config
-      https port: 8443, cert: #{inspect(cert_path)}, key: #{inspect(key_path)}
+      https port: 8443,
+        cert: #{inspect(cert_path)},
+        key: #{inspect(key_path)},
+        sni: [cert_directory: #{inspect(directory)}]
       """)
 
     assert [listener] = config.listeners
@@ -24,6 +27,8 @@ defmodule XamalProxy.ConfigTlsTest do
     assert listener.key == "KEY"
     assert listener.cert_path == cert_path
     assert listener.key_path == key_path
+    assert [{:sni_fun, sni_fun}] = listener.ssl_opts
+    assert is_function(sni_fun, 1)
 
     File.rm_rf!(directory)
   end

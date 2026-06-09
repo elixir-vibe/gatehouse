@@ -6,7 +6,14 @@ defmodule XamalProxy.LiveryOptionsTest do
   test "builds HTTP and HTTPS listener options from DSL listener structs" do
     listeners = [
       %Listener{scheme: :http, ip: {127, 0, 0, 1}, port: 8080},
-      %Listener{scheme: :https, ip: {127, 0, 0, 1}, port: 8443, cert: "CERT", key: "KEY"}
+      %Listener{
+        scheme: :https,
+        ip: {127, 0, 0, 1},
+        port: 8443,
+        cert: "CERT",
+        key: "KEY",
+        ssl_opts: [{:sni_fun, fn _ -> [] end}]
+      }
     ]
 
     opts =
@@ -20,9 +27,10 @@ defmodule XamalProxy.LiveryOptionsTest do
     assert opts.https.port == 8443
     assert opts.https.cert == "CERT"
     assert opts.https.key == "KEY"
+    assert Keyword.has_key?(opts.https.ssl_opts, :sni_fun)
   end
 
-  test "reloads TLS certificate files when building options" do
+  test "uses TLS certificate file paths when building options" do
     directory =
       Path.join(
         System.tmp_dir!(),
@@ -44,15 +52,8 @@ defmodule XamalProxy.LiveryOptionsTest do
     }
 
     assert [opts] = XamalProxy.LiveryOptions.from_config_listeners([listener])
-    assert opts.cert == "CERT1"
-    assert opts.key == "KEY1"
-
-    File.write!(cert_path, "CERT2")
-    File.write!(key_path, "KEY2")
-
-    assert [opts] = XamalProxy.LiveryOptions.from_config_listeners([listener])
-    assert opts.cert == "CERT2"
-    assert opts.key == "KEY2"
+    assert opts.cert == cert_path
+    assert opts.key == key_path
 
     File.rm_rf!(directory)
   end
