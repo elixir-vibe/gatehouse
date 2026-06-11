@@ -3,22 +3,24 @@ defmodule XamalProxy.TLS.SNI do
   Builds Erlang/OTP `:ssl` SNI options for certificate lookup.
   """
 
+  alias XamalProxy.CertificateStore.File, as: FileStore
+
   @spec ssl_opts(keyword()) :: keyword()
   def ssl_opts(opts) when is_list(opts) do
-    cert_directory = Keyword.fetch!(opts, :cert_directory)
-    [{:sni_fun, &certificate_options(&1, cert_directory)}]
+    store = Keyword.get(opts, :store, FileStore)
+    store_opts = Keyword.get(opts, :store_opts) || store_opts(opts)
+
+    [{:sni_fun, &certificate_options(&1, store, store_opts)}]
   end
 
-  @spec certificate_options(charlist() | binary(), Path.t()) :: keyword()
-  def certificate_options(server_name, cert_directory) when is_binary(cert_directory) do
-    name = normalize_name(server_name)
-    certfile = Path.join(cert_directory, "#{name}.crt")
-    keyfile = Path.join(cert_directory, "#{name}.key")
-
-    if File.regular?(certfile) and File.regular?(keyfile) do
-      [certfile: certfile, keyfile: keyfile]
-    else
-      []
+  @spec certificate_options(charlist() | binary(), module(), keyword()) :: keyword()
+  def certificate_options(server_name, store, store_opts) do
+    server_name
+    |> normalize_name()
+    |> store.paths(store_opts)
+    |> case do
+      {:ok, %{certfile: certfile, keyfile: keyfile}} -> [certfile: certfile, keyfile: keyfile]
+      {:error, _reason} -> []
     end
   end
 
@@ -32,5 +34,9 @@ defmodule XamalProxy.TLS.SNI do
     server_name
     |> String.trim_trailing(".")
     |> String.downcase()
+  end
+
+  defp store_opts(opts) do
+    [directory: Keyword.fetch!(opts, :cert_directory)]
   end
 end

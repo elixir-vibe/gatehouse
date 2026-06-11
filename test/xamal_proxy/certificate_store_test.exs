@@ -20,6 +20,32 @@ defmodule XamalProxy.CertificateStoreTest do
     File.rm_rf!(directory)
   end
 
+  test "resolves domain aliases to the canonical certificate" do
+    directory =
+      Path.join(
+        System.tmp_dir!(),
+        "xamal-proxy-cert-aliases-#{System.unique_integer([:positive])}"
+      )
+
+    assert :ok =
+             FileStore.put(
+               "example.com",
+               %{cert: "CERT", key: "KEY", domains: ["example.com", "www.example.com"]},
+               directory: directory
+             )
+
+    assert {:ok, %{certfile: certfile, keyfile: keyfile}} =
+             FileStore.paths("www.example.com", directory: directory)
+
+    assert certfile == Path.join(directory, "example.com.crt")
+    assert keyfile == Path.join(directory, "example.com.key")
+
+    assert {:ok, %{cert: "CERT", key: "KEY"}} =
+             FileStore.get("www.example.com", directory: directory)
+
+    File.rm_rf!(directory)
+  end
+
   test "derives expiry metadata from persisted certificate PEM" do
     directory =
       Path.join(System.tmp_dir!(), "xamal-proxy-cert-store-#{System.unique_integer([:positive])}")

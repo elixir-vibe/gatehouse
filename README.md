@@ -54,9 +54,8 @@ import XamalProxy.Config
 state "/var/lib/xamal-proxy/state.etf"
 http port: 80
 https port: 443,
-  cert: "/etc/xamal-proxy/certs/example.crt",
-  key: "/etc/xamal-proxy/certs/example.key",
-  sni: [cert_directory: "/var/lib/xamal-proxy/certs"]
+  cert: "/etc/xamal-proxy/certs/fallback.crt",
+  key: "/etc/xamal-proxy/certs/fallback.key"
 
 service :my_app do
   host "example.com"
@@ -78,7 +77,7 @@ Point the release at that file with ordinary application config:
 config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
 ```
 
-HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically. The `sni` option builds an Erlang/OTP `:ssl` SNI callback that selects `domain.crt` / `domain.key` from the certificate directory.
+HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically. When `acme` is configured and any service uses `tls :auto`, the HTTPS listener automatically installs an Erlang/OTP `:ssl` SNI callback backed by the ACME certificate store.
 
 Set `:persistence_path` to restore saved service state on boot and persist after
 deploys:
@@ -109,8 +108,11 @@ service :my_app do
 end
 ```
 
-The generated job stores certificates under `cert_directory` and persists the
-ACME account key under `account_directory` so renewals reuse the same account.
+The generated job stores certificates under `cert_directory`, writes aliases for
+all service hosts, and persists the ACME account key under `account_directory` so
+renewals reuse the same account. SNI lookup uses the same certificate store, so a
+certificate issued for `example.com` and `www.example.com` can be selected by
+either hostname.
 
 Pebble integration coverage is opt-in because it needs a local Pebble server:
 

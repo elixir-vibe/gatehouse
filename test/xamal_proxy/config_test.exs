@@ -73,6 +73,8 @@ defmodule XamalProxy.ConfigTest do
     assert job.provider_opts[:email] == "ops@example.com"
     assert job.provider_opts[:directory_url] == :lets_encrypt_staging
     assert job.provider_opts[:account_key_path] == "/tmp/accounts/example.com.account.term"
+    assert [{:sni_fun, sni_fun}] = XamalProxy.ACME.Config.sni_ssl_opts(config)
+    assert is_function(sni_fun, 1)
   end
 
   test "applies active static targets to the runtime control plane" do

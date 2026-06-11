@@ -95,8 +95,10 @@ defmodule XamalProxy.ACME.RenewalScheduler do
     store = Map.fetch!(job, :store)
     store_opts = Map.get(job, :store_opts, [])
 
-    with {:ok, cert} <- provider.order_certificate(Map.fetch!(job, :domains), provider_opts),
-         :ok <- store.put(job.name, cert, store_opts) do
+    domains = Map.fetch!(job, :domains)
+
+    with {:ok, cert} <- provider.order_certificate(domains, provider_opts),
+         :ok <- store.put(job.name, Map.put_new(cert, :domains, domains), store_opts) do
       refresh_tls_listener()
     end
   end

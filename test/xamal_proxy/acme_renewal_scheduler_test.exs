@@ -12,7 +12,7 @@ defmodule XamalProxy.ACMERenewalSchedulerTest do
     Application.put_env(:xamal_proxy, :acme_certificates, [
       %{
         name: "example.com",
-        domains: ["example.com"],
+        domains: ["example.com", "www.example.com"],
         provider: FakeACMEProvider,
         provider_opts: [test_pid: self()],
         store: FileStore,
@@ -21,11 +21,13 @@ defmodule XamalProxy.ACMERenewalSchedulerTest do
     ])
 
     assert [{"example.com", :ok}] = RenewalScheduler.renew_now()
-    assert_receive {:ordered, ["example.com"]}
+    assert_receive {:ordered, ["example.com", "www.example.com"]}
     assert {:ok, cert} = FileStore.get("example.com", directory: directory)
-    assert cert.cert == "CERT example.com"
+    assert cert.cert == "CERT example.com,www.example.com"
     assert cert.key == "KEY"
     assert %DateTime{} = cert.expires_at
+    assert {:ok, alias_cert} = FileStore.get("www.example.com", directory: directory)
+    assert alias_cert.cert == cert.cert
 
     File.rm_rf!(directory)
   after
