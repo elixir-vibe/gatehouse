@@ -53,8 +53,10 @@ defmodule XamalProxy.MixProject do
       {:vibe_kit, "== 0.1.2", only: [:dev, :test], runtime: false, override: true},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      # Temporary path dependency until Livery publishes ssl_opts forwarding.
-      {:livery, path: "../livery"},
+      # Temporary fork until Livery publishes ssl_opts forwarding.
+      {:livery,
+       git: "https://github.com/dannote/livery.git",
+       ref: "50516a1f1a8f18b0dd9ddffaf1bf0d07b1332bc1"},
       {:ex_acme, "~> 0.7"},
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
