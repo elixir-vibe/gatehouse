@@ -109,7 +109,7 @@ defmodule XamalProxy.Control do
       Service.configure(service.name, %{
         hosts: service.hosts,
         balance: :round_robin,
-        targets: Enum.map(targets, &%{id: &1.name, url: &1.url, metadata: &1.metadata})
+        targets: Enum.map(targets, &target_spec/1)
       })
     end
   end
@@ -128,10 +128,21 @@ defmodule XamalProxy.Control do
           health_path: service.health.path,
           health_timeout: service.health.timeout,
           drain_timeout: service.drain.timeout,
-          metadata: target.metadata,
+          metadata: target_metadata(target),
           skip_health_check: true
         })
     end
+  end
+
+  defp target_spec(target),
+    do: %{id: target.name, url: target.url, metadata: target_metadata(target)}
+
+  defp target_metadata(target) do
+    target.metadata
+    |> Map.put(:kind, target.kind)
+    |> Map.put(:socket, target.socket)
+    |> Map.put(:op, target.op)
+    |> Map.put(:shards, target.shards)
   end
 
   defp balanced_targets(%ConfigService{} = service) do
@@ -153,15 +164,19 @@ defmodule XamalProxy.Control do
 
   defp healthy_targets(service, targets) do
     healthy =
-      Enum.filter(targets, fn target ->
-        case URI.new(target.url) do
-          {:ok, uri} ->
-            HealthCheck.check(uri, path: service.health.path, timeout: service.health.timeout) ==
-              :ok
+      Enum.filter(targets, fn
+        %{kind: :safe_rpc} ->
+          true
 
-          {:error, _reason} ->
-            false
-        end
+        target ->
+          case URI.new(target.url) do
+            {:ok, uri} ->
+              HealthCheck.check(uri, path: service.health.path, timeout: service.health.timeout) ==
+                :ok
+
+            {:error, _reason} ->
+              false
+          end
       end)
 
     case healthy do
@@ -176,7 +191,7 @@ defmodule XamalProxy.Control do
       service: id,
       hosts: hosts,
       target_id: target.id,
-      target_url: URI.to_string(target.url),
+      target_url: target_url(target),
       metadata: target.metadata,
       skip_health_check: true
     }
@@ -187,6 +202,9 @@ defmodule XamalProxy.Control do
   defp restore_service(%State{id: id}) do
     {:ok, _pid} = ensure_service(id)
   end
+
+  defp target_url(%{url: nil}), do: nil
+  defp target_url(%{url: url}), do: URI.to_string(url)
 
   defp persist_if_configured do
     case persistence_path() do

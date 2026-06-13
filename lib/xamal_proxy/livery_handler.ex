@@ -8,6 +8,7 @@ defmodule XamalProxy.LiveryHandler do
   alias XamalProxy.Control
   alias XamalProxy.Livery.{Request, Response, WebSocket}
   alias XamalProxy.RouteTable
+  alias XamalProxy.SafeRPC
   alias XamalProxy.Telemetry
 
   @hop_by_hop_headers ~w(connection keep-alive proxy-authenticate proxy-authorization te trailer transfer-encoding upgrade)
@@ -19,7 +20,7 @@ defmodule XamalProxy.LiveryHandler do
     with :proxy <- maybe_http01_challenge(request),
          {:ok, service, target_id} <- route(request),
          {:ok, target} <- Control.checkout(service, target_id) do
-      response = maybe_upgrade_websocket(request, target.url) || forward(request, target.url)
+      response = forward_target(request, target)
       emit_request_telemetry(start, service, target_id, response)
       finalize_response(response, service, target_id)
     else
@@ -54,6 +55,17 @@ defmodule XamalProxy.LiveryHandler do
     request
     |> Request.host()
     |> RouteTable.lookup()
+  end
+
+  defp forward_target(request, %{kind: :safe_rpc} = target) do
+    case SafeRPC.Pool.checkout(target.socket, shards: target.shards) do
+      {:ok, pool} -> SafeRPC.Forwarder.forward(request, pool, route_key(request), op: target.op)
+      {:error, reason} -> Response.text(502, "bad gateway: #{inspect(reason)}")
+    end
+  end
+
+  defp forward_target(request, %{kind: :http, url: url}) do
+    maybe_upgrade_websocket(request, url) || forward(request, url)
   end
 
   defp maybe_upgrade_websocket(request, target_url) do
@@ -123,6 +135,8 @@ defmodule XamalProxy.LiveryHandler do
       query -> [path, ??, query] |> IO.iodata_to_binary()
     end
   end
+
+  defp route_key(request), do: {Request.host(request), Request.path(request)}
 
   defp request_body(:empty), do: <<>>
   defp request_body({:buffered, body}), do: body

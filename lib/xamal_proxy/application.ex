@@ -10,6 +10,7 @@ defmodule XamalProxy.Application do
       XamalProxy.ACME.ChallengeStore,
       XamalProxy.ACME.RenewalScheduler,
       XamalProxy.Backend.ConnectionPool,
+      XamalProxy.SafeRPC.Pool,
       {Registry, keys: :unique, name: XamalProxy.ServiceRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: XamalProxy.ServiceSupervisor},
       {Task.Supervisor, name: XamalProxy.RequestSupervisor},

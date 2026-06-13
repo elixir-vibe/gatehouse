@@ -102,6 +102,19 @@ defmodule XamalProxy.Config do
     })
   end
 
+  @spec safe_rpc_target(atom() | String.t(), keyword()) :: :ok
+  def safe_rpc_target(name, opts) when is_list(opts) do
+    Builder.add_target(%Target{
+      name: normalize_name(name),
+      kind: :safe_rpc,
+      socket: Keyword.fetch!(opts, :socket),
+      op: Keyword.get(opts, :op, :http_request),
+      shards: Keyword.get(opts, :shards, 1),
+      active?: Keyword.get(opts, :active, false),
+      metadata: Keyword.get(opts, :metadata, %{})
+    })
+  end
+
   @spec balance(atom(), keyword()) :: :ok
   def balance(policy, opts \\ []) when policy in [:active, :round_robin] and is_list(opts) do
     Builder.put_balance(%{policy: policy, options: opts})

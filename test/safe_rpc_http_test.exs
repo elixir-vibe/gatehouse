@@ -1,8 +1,22 @@
 defmodule XamalProxy.SafeRPCHTTPTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   alias SafeRPC.Adapter.HTTP.{Request, Response}
   alias XamalProxy.SafeRPC.HTTP
+
+  defmodule HTTPService do
+    @behaviour SafeRPC.Adapter.Service
+
+    def init(_opts), do: {:ok, %{}}
+
+    def call(:http_request, %Request{path: path}, _meta, _state) do
+      {:ok, Response.text(200, "safe rpc #{path}", [{"content-type", "text/plain"}])}
+    end
+  end
+
+  defmodule HTTPServer do
+    use SafeRPC.Adapter.Server, service: HTTPService
+  end
 
   test "converts livery requests to SafeRPC HTTP envelopes" do
     request =
@@ -28,6 +42,62 @@ defmodule XamalProxy.SafeRPCHTTPTest do
            } = HTTP.from_livery(request, scheme: :https)
   end
 
+  test "configures SafeRPC targets" do
+    socket = socket_path("config")
+
+    config =
+      XamalProxy.Config.eval!("""
+      import XamalProxy.Config
+
+      service :safe_app do
+        host "safe.example.com"
+        safe_rpc_target :main, socket: #{inspect(socket)}, active: true, shards: 2
+      end
+      """)
+
+    assert :ok = XamalProxy.Control.apply_config(config)
+    assert {:ok, "safe_app", "main"} = XamalProxy.RouteTable.lookup("safe.example.com")
+    assert {:ok, state} = XamalProxy.Control.get_service("safe_app")
+    assert state.active_target.kind == :safe_rpc
+    assert state.active_target.socket == socket
+    assert state.active_target.shards == 2
+  end
+
+  test "forwards livery requests to SafeRPC targets" do
+    socket = socket_path("forward")
+    {:ok, server} = HTTPServer.start_link(socket: socket)
+
+    config =
+      XamalProxy.Config.eval!("""
+      import XamalProxy.Config
+
+      service :safe_forward do
+        host "forward.example.com"
+        safe_rpc_target :main, socket: #{inspect(socket)}, active: true
+      end
+      """)
+
+    assert :ok = XamalProxy.Control.apply_config(config)
+
+    request =
+      :livery_req.new(%{
+        method: "GET",
+        scheme: "https",
+        authority: "forward.example.com",
+        path: "/hello",
+        raw_query: "",
+        headers: [{"host", "forward.example.com"}],
+        body: :empty
+      })
+
+    response = XamalProxy.LiveryHandler.handle(request)
+
+    assert XamalProxy.Livery.Response.status(response) == 200
+    assert XamalProxy.Livery.Response.body(response) == {:full, "safe rpc /hello"}
+
+    GenServer.stop(server)
+  end
+
   test "converts SafeRPC HTTP envelopes to livery responses" do
     response =
       HTTP.to_livery(%Response{
@@ -38,5 +108,12 @@ defmodule XamalProxy.SafeRPCHTTPTest do
 
     assert XamalProxy.Livery.Response.status(response) == 201
     assert XamalProxy.Livery.Response.body(response) == {:full, "created"}
+  end
+
+  defp socket_path(name) do
+    Path.join(
+      System.tmp_dir!(),
+      "xamal-safe-rpc-#{name}-#{System.unique_integer([:positive])}.sock"
+    )
   end
 end

@@ -178,7 +178,7 @@ defmodule XamalProxy.Service do
 
   defp build_targets(target_specs) do
     target_specs
-    |> Enum.map(&Target.new(&1.id, &1.url, Map.get(&1, :metadata, %{})))
+    |> Enum.map(&Target.new(&1.id, &1.url, target_metadata(&1)))
     |> Enum.reduce_while({:ok, []}, fn
       {:ok, target}, {:ok, targets} -> {:cont, {:ok, [target | targets]}}
       {:error, reason}, _acc -> {:halt, {:error, reason}}
@@ -193,10 +193,21 @@ defmodule XamalProxy.Service do
   defp build_target(spec) do
     target_id = Map.get(spec, :target_id, default_target_id())
     metadata = Map.get(spec, :metadata, %{})
-    Target.new(target_id, Map.fetch!(spec, :target_url), metadata)
+    Target.new(target_id, Map.get(spec, :target_url), metadata)
   end
 
+  defp target_metadata(%{kind: kind} = target) do
+    target.metadata
+    |> Map.put(:kind, kind)
+    |> Map.put(:socket, target.socket)
+    |> Map.put(:op, target.op)
+    |> Map.put(:shards, target.shards)
+  end
+
+  defp target_metadata(%{metadata: metadata}), do: metadata
+
   defp maybe_health_check(_target, %{skip_health_check: true}), do: :ok
+  defp maybe_health_check(%Target{kind: :safe_rpc}, _spec), do: :ok
 
   defp maybe_health_check(%Target{id: target_id, url: url}, spec) do
     start = System.monotonic_time()
