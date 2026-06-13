@@ -92,8 +92,10 @@ defmodule XamalProxy.Config do
     Builder.add_host(hostname)
   end
 
-  @spec target(atom() | String.t(), String.t(), keyword()) :: :ok
-  def target(name, url, opts \\ []) when is_binary(url) and is_list(opts) do
+  @spec target(atom() | String.t(), String.t() | keyword(), keyword()) :: :ok
+  def target(name, url_or_opts, opts \\ [])
+
+  def target(name, url, opts) when is_binary(url) and is_list(opts) do
     Builder.add_target(%Target{
       name: normalize_name(name),
       url: url,
@@ -102,14 +104,15 @@ defmodule XamalProxy.Config do
     })
   end
 
-  @spec safe_rpc_target(atom() | String.t(), keyword()) :: :ok
-  def safe_rpc_target(name, opts) when is_list(opts) do
+  def target(name, opts, []) when is_list(opts) do
+    safe_rpc = Keyword.fetch!(opts, :safe_rpc)
+
     Builder.add_target(%Target{
       name: normalize_name(name),
       kind: :safe_rpc,
-      socket: Keyword.fetch!(opts, :socket),
-      op: Keyword.get(opts, :op, :http_request),
-      shards: Keyword.get(opts, :shards, 1),
+      socket: Keyword.fetch!(safe_rpc, :socket),
+      op: Keyword.get(safe_rpc, :op, :http_request),
+      shards: Keyword.get(safe_rpc, :shards, 1),
       active?: Keyword.get(opts, :active, false),
       metadata: Keyword.get(opts, :metadata, %{})
     })

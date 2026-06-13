@@ -51,7 +51,7 @@ defmodule XamalProxy.SafeRPCHTTPTest do
 
       service :safe_app do
         host "safe.example.com"
-        safe_rpc_target :main, socket: #{inspect(socket)}, active: true, shards: 2
+        target :main, safe_rpc: [socket: #{inspect(socket)}, shards: 2], active: true
       end
       """)
 
@@ -73,7 +73,7 @@ defmodule XamalProxy.SafeRPCHTTPTest do
 
       service :safe_forward do
         host "forward.example.com"
-        safe_rpc_target :main, socket: #{inspect(socket)}, active: true
+        target :main, safe_rpc: [socket: #{inspect(socket)}], active: true
       end
       """)
 
