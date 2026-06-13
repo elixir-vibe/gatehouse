@@ -18,6 +18,21 @@ defmodule XamalProxy.SafeRPCHTTPTest do
     use SafeRPC.Adapter.Server, service: HTTPService
   end
 
+  defmodule PlugRouter do
+    use Plug.Router
+
+    plug(:match)
+    plug(:dispatch)
+
+    get "/hello" do
+      send_resp(conn, 200, "hello from plug #{conn.host}")
+    end
+  end
+
+  defmodule PlugRPCServer do
+    use SafeRPC.Adapter.Plug, plug: PlugRouter
+  end
+
   test "converts livery requests to SafeRPC HTTP envelopes" do
     request =
       :livery_req.new(%{
@@ -94,6 +109,43 @@ defmodule XamalProxy.SafeRPCHTTPTest do
 
     assert XamalProxy.Livery.Response.status(response) == 200
     assert XamalProxy.Livery.Response.body(response) == {:full, "safe rpc /hello"}
+
+    GenServer.stop(server)
+  end
+
+  test "forwards livery requests through SafeRPC Plug adapters" do
+    socket = socket_path("plug")
+    {:ok, server} = PlugRPCServer.start_link(socket: socket)
+
+    config =
+      XamalProxy.Config.eval!("""
+      import XamalProxy.Config
+
+      service :plug_forward do
+        host "plug-forward.example.com"
+        target :main, safe_rpc: [socket: #{inspect(socket)}], active: true
+      end
+      """)
+
+    assert :ok = XamalProxy.Control.apply_config(config)
+
+    request =
+      :livery_req.new(%{
+        method: "GET",
+        scheme: "https",
+        authority: "plug-forward.example.com",
+        path: "/hello",
+        raw_query: "",
+        headers: [{"host", "plug-forward.example.com"}],
+        body: :empty
+      })
+
+    response = XamalProxy.LiveryHandler.handle(request)
+
+    assert XamalProxy.Livery.Response.status(response) == 200
+
+    assert XamalProxy.Livery.Response.body(response) ==
+             {:full, "hello from plug plug-forward.example.com"}
 
     GenServer.stop(server)
   end

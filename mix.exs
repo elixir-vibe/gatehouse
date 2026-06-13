@@ -62,6 +62,7 @@ defmodule XamalProxy.MixProject do
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5.8", override: true},
       {:safe_rpc, path: "../safe_rpc"},
+      {:plug, "~> 1.18"},
       # Temporary path dependency until systemdkit is published to Hex.
       {:systemdkit, path: "../systemdkit"}
     ]
