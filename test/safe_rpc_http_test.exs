@@ -113,6 +113,7 @@ defmodule XamalProxy.SafeRPCHTTPTest do
     GenServer.stop(server)
   end
 
+  @tag :integration
   test "forwards livery requests through SafeRPC Plug adapters" do
     socket = socket_path("plug")
     {:ok, server} = PlugRPCServer.start_link(socket: socket)
