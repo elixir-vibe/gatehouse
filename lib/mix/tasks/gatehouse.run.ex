@@ -161,15 +161,16 @@ defmodule Mix.Tasks.Gatehouse.Run do
   end
 
   defp run_command([executable | args], backend_port) do
-    env = [{"PORT", Integer.to_string(backend_port)}]
+    {_output, status} =
+      MuonTrap.cmd(executable, args,
+        env: [{"PORT", Integer.to_string(backend_port)}],
+        into: IO.stream(:stdio, :line),
+        stderr_to_stdout: true
+      )
 
-    case System.cmd(executable, args,
-           env: env,
-           into: IO.stream(:stdio, :line),
-           stderr_to_stdout: true
-         ) do
-      {_output, 0} -> :ok
-      {_output, status} -> exit({:shutdown, status})
+    case status do
+      0 -> :ok
+      status -> exit({:shutdown, status})
     end
   end
 end

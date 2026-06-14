@@ -17,6 +17,7 @@ Initial package release.
 - Added local development CA and `.localhost` host certificate generation for HTTPS dev proxying.
 - Added local HTTPS HTTP/1.1 proxy support for Phoenix apps, including LiveView/WebSocket traffic.
 - Added `--open`, `--no-tls`, `--host`, `--proxy-port`, `--backend-port`, and `--cert-dir` options for development proxy tasks.
+- Development proxy tasks now run child commands via MuonTrap so Phoenix child processes are cleaned up when the task exits.
 
 ### Changed
 

@@ -60,6 +60,7 @@ defmodule Gatehouse.MixProject do
        ref: "f62037300a3d45ca31b9b93497ebe3dea65514d8"},
       {:ex_acme, "~> 0.7"},
       {:x509, "~> 0.9"},
+      {:muontrap, "~> 1.8"},
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5.8"},
