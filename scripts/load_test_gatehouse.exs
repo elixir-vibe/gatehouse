@@ -811,8 +811,8 @@ defmodule Gatehouse.LoadTest do
 
   defp start_profile("eprof") do
     ensure_tools_on_code_path!()
-    {:ok, _pid} = :eprof.start()
-    :eprof.start_profiling(Process.list())
+    {:ok, _pid} = apply(:eprof, :start, [])
+    apply(:eprof, :start_profiling, [Process.list()])
   end
 
   defp start_profile(profile), do: raise("unknown profiler #{inspect(profile)}; expected eprof")
@@ -820,9 +820,9 @@ defmodule Gatehouse.LoadTest do
   defp stop_profile(nil), do: nil
 
   defp stop_profile("eprof") do
-    :eprof.stop_profiling()
-    :eprof.analyze(:total)
-    :eprof.stop()
+    apply(:eprof, :stop_profiling, [])
+    apply(:eprof, :analyze, [:total])
+    apply(:eprof, :stop, [])
     "eprof results printed above"
   end
 
