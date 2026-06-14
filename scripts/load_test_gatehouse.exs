@@ -423,6 +423,7 @@ defmodule Gatehouse.LoadTest do
 
   defp run_external_driver!("bombardier", opts, url, host) do
     run_tool!("bombardier", [
+      "--http1",
       "-c",
       to_string(opts.concurrency),
       "-n",
