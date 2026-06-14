@@ -71,6 +71,11 @@ settle wait so retained-memory deltas are easier to spot. During the run it
 samples VM state periodically, including total memory, memory breakdown, process
 count, reductions, and the top memory-consuming processes in the last sample.
 
+Telemetry event counts, statuses, and result counts are exact. Duration
+percentiles are calculated from a bounded reservoir sample of up to 10,000
+measurements per event so long stress runs do not turn the collector into the
+main memory consumer.
+
 For SafeRPC scenarios, compare:
 
 - client latency — end-to-end observed by the caller;

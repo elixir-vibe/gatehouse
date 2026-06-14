@@ -19,6 +19,8 @@ defmodule Gatehouse.LoadTest.SafeRPCServer do
 end
 
 defmodule Gatehouse.LoadTest.TelemetryCollector do
+  @max_duration_samples 10_000
+
   @events [
     [:gatehouse, :proxy, :request, :stop],
     [:gatehouse, :safe_rpc, :pool, :checkout, :stop],
@@ -69,7 +71,22 @@ defmodule Gatehouse.LoadTest.TelemetryCollector do
   defp maybe_add_duration(summary, nil), do: summary
 
   defp maybe_add_duration(summary, duration) do
-    Map.update!(summary, :durations, &[duration | &1])
+    Map.update!(summary, :durations, &sample_duration(&1, duration, summary.count))
+  end
+
+  defp sample_duration(durations, duration, _count)
+       when length(durations) < @max_duration_samples do
+    [duration | durations]
+  end
+
+  defp sample_duration(durations, duration, count) do
+    slot = :rand.uniform(count)
+
+    if slot <= @max_duration_samples do
+      List.replace_at(durations, slot - 1, duration)
+    else
+      durations
+    end
   end
 
   defp update_status(summary, nil), do: summary
