@@ -37,6 +37,9 @@ Available scenarios:
 - `ws_echo` — Gatehouse proxies WebSocket upgrades to a local echo backend and
   verifies concurrent echo round trips. This scenario currently requires the
   built-in driver; use k6 later for external WebSocket stress.
+- `ws_churn` — Gatehouse opens long-lived WebSocket echo connections, sends
+  periodic messages, and reconnects each client every 10 messages to simulate
+  connection churn. This scenario currently requires the built-in driver.
 - `safe_rpc_baseline` — Gatehouse routes HTTP requests to a SafeRPC Unix socket
   backend.
 - `safe_rpc_blue_green` — traffic starts on a blue SafeRPC backend, switches to a
@@ -162,6 +165,7 @@ Environment:
 | `http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~28.0k req/s | 0.21ms | 1.55ms | 4.28ms | +7.01MiB | +134 |
 | `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~12.3k req/s | 8.88ms | 20.69ms | 29.49ms | +0.67MiB | +37 |
 | `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.96ms | 9.28ms | 42.56ms | +6.49MiB | +38 |
+| `ws_churn` | builtin | 147,925 messages | 500 | 15,000 opens / 147,925 echoes | n/a | 0.64ms | 9.04ms | 36.32ms | +8.48MiB | +38 |
 | `safe_rpc_restart` | builtin | 10,000 | 100 | 6,718 2xx / 3,282 502 | n/a | 0.27ms | 2.55ms | 6.40ms | +3.48MiB | +39 |
 
 The direct HTTP baseline shows the local Livery backend can serve about 108k
@@ -204,7 +208,7 @@ network I/O and HTTP parsing rather than Gatehouse business logic:
 
 ## Stress cases to add next
 
-1. Long-lived WebSocket connection churn and mixed message sizes.
+1. WebSocket mixed message sizes and binary frames.
 2. Streaming and slow-response backends.
 3. Soak tests with process/memory leak assertions.
 4. Livery `instrument` metrics exporter wiring for lower-level HTTP server

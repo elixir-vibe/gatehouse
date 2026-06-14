@@ -328,6 +328,7 @@ defmodule Gatehouse.LoadTest do
   defp run(%{scenario: "direct_http_baseline"} = opts), do: direct_http_baseline(opts)
   defp run(%{scenario: "http_baseline"} = opts), do: http_baseline(opts)
   defp run(%{scenario: "ws_echo"} = opts), do: ws_echo(opts)
+  defp run(%{scenario: "ws_churn"} = opts), do: ws_churn(opts)
   defp run(%{scenario: "safe_rpc_baseline"} = opts), do: safe_rpc_baseline(opts)
   defp run(%{scenario: "safe_rpc_blue_green"} = opts), do: safe_rpc_blue_green(opts)
   defp run(%{scenario: "safe_rpc_restart"} = opts), do: safe_rpc_restart(opts)
@@ -378,6 +379,25 @@ defmodule Gatehouse.LoadTest do
     result = run_websocket_clients(opts, host)
     WebSocketBackend.stop(backend)
     Map.put(result, :scenario, "ws_echo")
+  end
+
+  defp ws_churn(%{driver: driver}) when driver != "builtin" do
+    raise "ws_churn requires --driver builtin; use k6 later for external WebSocket churn"
+  end
+
+  defp ws_churn(opts) do
+    {:ok, backend} = WebSocketBackend.start_link("ws_churn")
+    host = "ws-churn.localhost"
+
+    start_gatehouse!(%{
+      host: host,
+      target: "http://127.0.0.1:#{backend.port}",
+      kind: :http
+    })
+
+    result = run_websocket_churn(opts, host)
+    WebSocketBackend.stop(backend)
+    Map.put(result, :scenario, "ws_churn")
   end
 
   defp safe_rpc_baseline(opts) do
@@ -671,6 +691,250 @@ defmodule Gatehouse.LoadTest do
       bodies: frequencies(Enum.map(results, & &1.body)),
       client_durations: Enum.map(results, & &1.duration)
     }
+  end
+
+  defp run_websocket_churn(opts, host) do
+    port = Process.get(:gatehouse_load_port)
+    path = opts.path || "/ws"
+    ws_path = if path == "/bench", do: "/ws", else: path
+    duration_ms = parse_duration_ms(opts.duration)
+    deadline = System.monotonic_time(:millisecond) + duration_ms
+
+    results =
+      1..opts.concurrency
+      |> Task.async_stream(
+        fn index -> websocket_churn_worker(port, host, ws_path, index, deadline) end,
+        max_concurrency: opts.concurrency,
+        timeout: duration_ms + 30_000,
+        ordered: false
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    totals = merge_worker_totals(results)
+
+    %{
+      requests: totals.messages,
+      concurrency: opts.concurrency,
+      duration: opts.duration,
+      url: "ws://127.0.0.1:#{port}#{ws_path}",
+      host: host,
+      statuses: %{
+        opened: totals.opened,
+        closed: totals.closed,
+        echo_ok: totals.echo_ok,
+        errors: totals.errors
+      },
+      bodies: %{},
+      client_durations: totals.durations
+    }
+  end
+
+  defp websocket_churn_worker(port, host, path, index, deadline) do
+    churn_every = 10
+    message_interval_ms = 100
+
+    initial = %{
+      opened: 0,
+      closed: 0,
+      messages: 0,
+      echo_ok: 0,
+      errors: 0,
+      since_open: 0,
+      durations: []
+    }
+
+    websocket_churn_loop(
+      port,
+      host,
+      path,
+      index,
+      deadline,
+      churn_every,
+      message_interval_ms,
+      nil,
+      nil,
+      initial
+    )
+  end
+
+  defp websocket_churn_loop(
+         port,
+         host,
+         path,
+         index,
+         deadline,
+         churn_every,
+         message_interval_ms,
+         conn,
+         stream,
+         totals
+       ) do
+    cond do
+      System.monotonic_time(:millisecond) >= deadline ->
+        totals
+        |> close_churn_connection(conn)
+        |> Map.update!(:closed, &if(conn, do: &1 + 1, else: &1))
+
+      is_nil(conn) ->
+        case open_websocket(port, host, path) do
+          {:ok, next_conn, next_stream} ->
+            websocket_churn_loop(
+              port,
+              host,
+              path,
+              index,
+              deadline,
+              churn_every,
+              message_interval_ms,
+              next_conn,
+              next_stream,
+              %{
+                totals
+                | opened: totals.opened + 1
+              }
+            )
+
+          {:error, _reason} ->
+            Process.sleep(10)
+
+            websocket_churn_loop(
+              port,
+              host,
+              path,
+              index,
+              deadline,
+              churn_every,
+              message_interval_ms,
+              nil,
+              nil,
+              %{totals | errors: totals.errors + 1}
+            )
+        end
+
+      totals.since_open >= churn_every ->
+        totals = close_churn_connection(totals, conn)
+
+        websocket_churn_loop(
+          port,
+          host,
+          path,
+          index,
+          deadline,
+          churn_every,
+          message_interval_ms,
+          nil,
+          nil,
+          %{totals | closed: totals.closed + 1, since_open: 0}
+        )
+
+      true ->
+        message = "ws-churn-#{index}-#{totals.messages + 1}"
+        {result, duration} = timed(fn -> websocket_roundtrip(conn, stream, message) end)
+
+        totals =
+          case result do
+            :ok ->
+              %{
+                totals
+                | messages: totals.messages + 1,
+                  echo_ok: totals.echo_ok + 1,
+                  since_open: totals.since_open + 1
+              }
+
+            {:error, _reason} ->
+              %{
+                totals
+                | messages: totals.messages + 1,
+                  errors: totals.errors + 1,
+                  since_open: totals.since_open + 1
+              }
+          end
+          |> Map.update!(:durations, &[duration | &1])
+
+        sleep_until_next_message(deadline, message_interval_ms)
+
+        websocket_churn_loop(
+          port,
+          host,
+          path,
+          index,
+          deadline,
+          churn_every,
+          message_interval_ms,
+          conn,
+          stream,
+          totals
+        )
+    end
+  end
+
+  defp sleep_until_next_message(deadline, interval_ms) do
+    remaining_ms = deadline - System.monotonic_time(:millisecond)
+
+    if remaining_ms > 0 do
+      Process.sleep(min(interval_ms, remaining_ms))
+    end
+  end
+
+  defp open_websocket(port, host, path) do
+    with {:ok, conn} <- :gun.open(~c"127.0.0.1", port, %{transport: :tcp, protocols: [:http]}),
+         {:ok, _protocol} <- :gun.await_up(conn, 5_000),
+         stream <- :gun.ws_upgrade(conn, path, [{"host", host}]),
+         {:upgrade, _protocols, _headers} <- :gun.await(conn, stream, 5_000) do
+      {:ok, conn, stream}
+    else
+      error -> {:error, error}
+    end
+  end
+
+  defp websocket_roundtrip(conn, stream, message) do
+    with :ok <- :gun.ws_send(conn, stream, {:text, message}),
+         {:ws, {:text, ^message}} <- :gun.await(conn, stream, 5_000) do
+      :ok
+    else
+      error -> {:error, error}
+    end
+  end
+
+  defp close_churn_connection(totals, nil), do: totals
+
+  defp close_churn_connection(totals, conn) do
+    :gun.close(conn)
+    totals
+  end
+
+  defp timed(fun) do
+    start = System.monotonic_time()
+    result = fun.()
+    {result, System.monotonic_time() - start}
+  end
+
+  defp merge_worker_totals(results) do
+    Enum.reduce(
+      results,
+      %{opened: 0, closed: 0, messages: 0, echo_ok: 0, errors: 0, since_open: 0, durations: []},
+      fn result, acc ->
+        %{
+          opened: acc.opened + result.opened,
+          closed: acc.closed + result.closed,
+          messages: acc.messages + result.messages,
+          echo_ok: acc.echo_ok + result.echo_ok,
+          errors: acc.errors + result.errors,
+          since_open: 0,
+          durations: result.durations ++ acc.durations
+        }
+      end
+    )
+  end
+
+  defp parse_duration_ms(duration) when is_binary(duration) do
+    case Regex.run(~r/^([0-9]+)(ms|s|m)?$/, duration) do
+      [_match, value, "ms"] -> String.to_integer(value)
+      [_match, value, "s"] -> String.to_integer(value) * 1_000
+      [_match, value, "m"] -> String.to_integer(value) * 60_000
+      [_match, value] -> String.to_integer(value) * 1_000
+      _other -> raise "invalid duration #{inspect(duration)}; expected e.g. 500ms, 30s, or 1m"
+    end
   end
 
   defp websocket_echo_once(port, host, path, message) do
