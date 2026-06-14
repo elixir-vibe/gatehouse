@@ -65,8 +65,7 @@ defmodule Gatehouse.MixProject do
       {:req, "~> 0.5.8", override: true},
       {:safe_rpc, "~> 0.1"},
       {:plug, "~> 1.18"},
-      # Temporary path dependency until systemdkit is published to Hex.
-      {:systemdkit, path: "../systemdkit"}
+      {:systemdkit, "~> 0.1.2"}
     ]
   end
 
