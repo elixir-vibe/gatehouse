@@ -53,11 +53,13 @@ defmodule Gatehouse.MixProject do
       {:vibe_kit, "== 0.1.2", only: [:dev, :test], runtime: false, override: true},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      # Temporary fork until Livery publishes ssl_opts forwarding.
+      # Temporary fork until Livery publishes ssl_opts forwarding, HTTP/2 authority
+      # propagation, and HTTPS H1 WebSocket upgrades.
       {:livery,
        git: "https://github.com/dannote/livery.git",
-       ref: "50516a1f1a8f18b0dd9ddffaf1bf0d07b1332bc1"},
+       ref: "f62037300a3d45ca31b9b93497ebe3dea65514d8"},
       {:ex_acme, "~> 0.7"},
+      {:x509, "~> 0.9"},
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5.8", override: true},

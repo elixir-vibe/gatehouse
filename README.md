@@ -128,6 +128,50 @@ Like `systemdkit`, the script copies the project into the Lima VM named
 GATEHOUSE_PEBBLE=1 GATEHOUSE_PEBBLE_EXTERNAL=1 mix test test/gatehouse/acme_pebble_integration_test.exs
 ```
 
+## Phoenix local HTTPS DX
+
+Phoenix apps can add Gatehouse as a dev dependency and run their dev server
+behind a stable local HTTPS URL:
+
+```elixir
+# mix.exs in your Phoenix app
+def deps do
+  [
+    {:gatehouse, "~> 0.1", only: :dev, runtime: false}
+  ]
+end
+```
+
+```sh
+mix gatehouse.trust
+mix gatehouse.phx
+# => https://my-app.localhost:4443 -> http://127.0.0.1:<random-port>
+```
+
+`mix gatehouse.phx` chooses a free backend port, exposes it as `PORT`, starts a
+local Gatehouse HTTPS proxy, registers the `.localhost` host, and then runs
+`mix phx.server`. Regular Phoenix requests, static assets, and LiveView
+WebSockets are proxied through the same HTTPS origin. For custom commands use:
+
+```sh
+mix gatehouse.run -- mix phx.server
+mix gatehouse.run --open -- mix phx.server
+mix gatehouse.run --host admin.localhost --proxy-port 443 -- mix phx.server
+mix gatehouse.run --no-tls -- mix phx.server
+```
+
+Make sure your Phoenix endpoint reads `PORT` in dev, for example:
+
+```elixir
+config :my_app, MyAppWeb.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
+  check_origin: ["https://my-app.localhost:4443"]
+```
+
+The development CA and host certificates live under `~/.gatehouse/dev_certs` by
+default. `mix gatehouse.trust` creates the CA and prints OS-specific trust-store
+instructions; it does not run `sudo` automatically.
+
 ## Development
 
 This project was created with Igniter and VibeKit:

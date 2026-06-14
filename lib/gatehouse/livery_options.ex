@@ -52,7 +52,7 @@ defmodule Gatehouse.LiveryOptions do
     listener
     |> maybe_put_extra_ssl_opts(extra_ssl_opts)
     |> prefer_tls_paths()
-    |> Map.take([:ip, :port, :cert, :key, :ssl_opts])
+    |> Map.take([:ip, :port, :cert, :key, :ssl_opts, :transport])
     |> Enum.reject(fn
       {:ssl_opts, []} -> true
       {_key, value} -> is_nil(value)
