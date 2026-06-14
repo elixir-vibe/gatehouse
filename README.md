@@ -1,10 +1,15 @@
 # Gatehouse
 
-OTP-native edge proxy and blue-green traffic switcher for Xamal deployments.
+OTP-native edge proxy and blue-green traffic switcher for Elixir deployments.
 
-This package is the beginning of a BEAM-native replacement for the current
-Caddy reload step in Xamal. The proxy should run as a stable Erlang node at the
-edge while Xamal orchestrates releases over SSH.
+> [!NOTE]
+> The `gatehouse` package currently published on Hex as `0.0.1` is a placeholder
+> that reserves the package name. Use this repository as the canonical source
+> while the first usable Gatehouse release is prepared.
+
+Gatehouse is a BEAM-native application router for HostKit-style deployments.
+The proxy runs as a stable Erlang node at the edge while deploy tooling
+orchestrates releases over SSH.
 
 ## Current architecture slice
 
@@ -23,7 +28,7 @@ The package is intentionally small and OTP-first:
 - `Gatehouse.ACME.Provider` defines the ACME adapter boundary.
 - `Gatehouse.ACME.RenewalScheduler` persists renewed certs and asks the listener to refresh TLS.
 
-A remote Xamal deployer can call the edge node through Erlang distribution:
+A remote deployer can call the edge node through Erlang distribution:
 
 ```elixir
 :rpc.call(:"gatehouse@host", Gatehouse.Control, :deploy, [spec], 60_000)
