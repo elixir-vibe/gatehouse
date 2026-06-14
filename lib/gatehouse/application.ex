@@ -10,6 +10,7 @@ defmodule Gatehouse.Application do
       Gatehouse.ACME.ChallengeStore,
       Gatehouse.ACME.RenewalScheduler,
       Gatehouse.Backend.ConnectionPool,
+      {DynamicSupervisor, strategy: :one_for_one, name: Gatehouse.SafeRPC.PoolSupervisor},
       Gatehouse.SafeRPC.Pool,
       {Registry, keys: :unique, name: Gatehouse.ServiceRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: Gatehouse.ServiceSupervisor},

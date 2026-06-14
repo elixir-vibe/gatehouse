@@ -2,6 +2,7 @@ defmodule Gatehouse.SafeRPCHTTPTest do
   use ExUnit.Case, async: false
 
   alias Gatehouse.SafeRPC.HTTP
+  alias Gatehouse.SafeRPC.Pool, as: SafeRPCPool
   alias SafeRPC.Adapter.HTTP.{Request, Response}
 
   defmodule HTTPService do
@@ -109,6 +110,25 @@ defmodule Gatehouse.SafeRPCHTTPTest do
 
     assert Gatehouse.Livery.Response.status(response) == 200
     assert Gatehouse.Livery.Response.body(response) == {:full, "safe rpc /hello"}
+
+    GenServer.stop(server)
+  end
+
+  test "recreates supervised SafeRPC client pools after a crash" do
+    socket = socket_path("supervised")
+    File.rm(socket)
+    {:ok, server} = HTTPServer.start_link(socket: socket)
+
+    assert {:ok, pool} = SafeRPCPool.checkout(socket, shards: 1)
+    ref = Process.monitor(pool)
+    Process.exit(pool, :kill)
+    assert_receive {:DOWN, ^ref, :process, ^pool, :killed}
+
+    eventually(fn ->
+      assert {:ok, replacement} = SafeRPCPool.checkout(socket, shards: 1)
+      assert replacement != pool
+      assert Process.alive?(replacement)
+    end)
 
     GenServer.stop(server)
   end
@@ -272,6 +292,18 @@ defmodule Gatehouse.SafeRPCHTTPTest do
   def handle_event(event, measurements, metadata, {test_pid, ref}) do
     send(test_pid, {ref, event, measurements, metadata})
   end
+
+  defp eventually(fun, attempts \\ 20)
+
+  defp eventually(fun, attempts) when attempts > 0 do
+    fun.()
+  rescue
+    _error in [ExUnit.AssertionError] ->
+      Process.sleep(25)
+      eventually(fun, attempts - 1)
+  end
+
+  defp eventually(fun, 0), do: fun.()
 
   defp socket_path(name) do
     Path.join(

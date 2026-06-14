@@ -12,22 +12,33 @@ defmodule Gatehouse.SafeRPC.Pool do
   end
 
   @impl true
-  def init(state), do: {:ok, state}
+  def init(_state), do: {:ok, %{pools: %{}, refs: %{}}}
 
   @impl true
   def handle_call({:checkout, socket, opts}, _from, state) do
     key = {socket, Keyword.get(opts, :shards, 1), Keyword.get(opts, :cap)}
 
-    case Map.fetch(state, key) do
+    case Map.fetch(state.pools, key) do
       {:ok, pid} when is_pid(pid) ->
         if Process.alive?(pid) do
           {:reply, {:ok, pid}, state}
         else
-          open_pool(key, socket, opts, Map.delete(state, key))
+          open_pool(key, socket, opts, remove_pool(state, key))
         end
 
       _missing ->
         open_pool(key, socket, opts, state)
+    end
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, state) do
+    case Map.pop(state.refs, ref) do
+      {nil, refs} ->
+        {:noreply, %{state | refs: refs}}
+
+      {key, refs} ->
+        {:noreply, %{state | refs: refs, pools: Map.delete(state.pools, key)}}
     end
   end
 
@@ -42,9 +53,33 @@ defmodule Gatehouse.SafeRPC.Pool do
   defp start_pool(key, socket, opts, state) do
     pool_opts = Keyword.merge(opts, socket: socket, shards: Keyword.get(opts, :shards, 1))
 
-    case SafeRPC.ClientPool.start_link(pool_opts) do
-      {:ok, pid} -> {:reply, {:ok, pid}, Map.put(state, key, pid)}
-      {:error, reason} -> {:reply, {:error, reason}, state}
+    child_spec =
+      Supervisor.child_spec({SafeRPC.ClientPool, pool_opts},
+        id: {SafeRPC.ClientPool, key},
+        restart: :temporary
+      )
+
+    case DynamicSupervisor.start_child(Gatehouse.SafeRPC.PoolSupervisor, child_spec) do
+      {:ok, pid} ->
+        ref = Process.monitor(pid)
+        state = put_pool(state, key, pid, ref)
+        {:reply, {:ok, pid}, state}
+
+      {:ok, pid, _info} ->
+        ref = Process.monitor(pid)
+        state = put_pool(state, key, pid, ref)
+        {:reply, {:ok, pid}, state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
+  end
+
+  defp put_pool(state, key, pid, ref) do
+    %{state | pools: Map.put(state.pools, key, pid), refs: Map.put(state.refs, ref, key)}
+  end
+
+  defp remove_pool(state, key) do
+    %{state | pools: Map.delete(state.pools, key)}
   end
 end
