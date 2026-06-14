@@ -65,6 +65,7 @@ Common options:
 --max-proxy-p99-ms N Fail if sampled proxy p99 latency is above N milliseconds
 --max-retained-total-mb N Fail if retained total memory exceeds N MiB
 --max-retained-processes N Fail if retained process count exceeds N
+--process-diagnostics Print retained process groups and largest retained processes
 ```
 
 ## Metrics collected
@@ -164,17 +165,22 @@ per-origin upstream connection pool (`:backend_max_connections_per_origin`,
 default 32). That is a meaningful improvement, but still leaves HTTP proxy
 performance as an optimization area.
 
-`safe_rpc_restart` with 10,000 requests and 100 concurrency correctly recovered
-traffic after restarting the backend, but it exposed retained memory/process
-threshold failures on this run:
+`safe_rpc_restart` initially appeared to retain about +201MiB and +141
+processes. `--process-diagnostics` showed those retained processes were mostly
+client-side Req/Finch connection-pool processes created by the built-in harness,
+not Gatehouse/SafeRPC server processes. The built-in HTTP client now uses
+`:httpc` with `connection: close` so restart leak checks measure the proxy more
+cleanly.
 
-- responses: 6,716 successful, 3,284 expected `502 bad gateway` during outage
-- proxy p99: 1.78ms
-- retained total memory: about +201MiB
-- retained process count: +141
+A follow-up 10,000 request / 100 concurrency restart run recovered correctly:
 
-Treat this as an active investigation item before considering Gatehouse release
-ready for restart-heavy workloads.
+- responses: 6,710 successful, 3,290 expected `502 bad gateway` during outage
+- proxy p99: 13.80ms
+- retained total memory: about +5.39MiB
+- retained process count: +39
+
+The remaining retained processes are the Gatehouse/Livery listener and acceptor
+processes kept alive for the configured route.
 
 ## Stress cases to add next
 

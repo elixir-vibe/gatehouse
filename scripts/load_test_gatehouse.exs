@@ -245,6 +245,7 @@ defmodule Gatehouse.LoadTest do
 
     {:ok, _sampler} = VMSampler.start_link(interval: opts.sample_interval)
     before_vm = vm_stats()
+    before_processes = process_snapshot()
 
     try do
       result = run(opts)
@@ -259,7 +260,10 @@ defmodule Gatehouse.LoadTest do
         before_vm,
         after_load_vm,
         settled_vm,
-        samples
+        samples,
+        before_processes,
+        process_snapshot(),
+        opts
       )
 
       assert_thresholds!(opts, telemetry, before_vm, settled_vm)
@@ -285,7 +289,8 @@ defmodule Gatehouse.LoadTest do
           max_error_rate: :float,
           max_proxy_p99_ms: :float,
           max_retained_total_mb: :float,
-          max_retained_processes: :integer
+          max_retained_processes: :integer,
+          process_diagnostics: :boolean
         ]
       )
 
@@ -305,13 +310,14 @@ defmodule Gatehouse.LoadTest do
       max_error_rate: Keyword.get(opts, :max_error_rate),
       max_proxy_p99_ms: Keyword.get(opts, :max_proxy_p99_ms),
       max_retained_total_mb: Keyword.get(opts, :max_retained_total_mb),
-      max_retained_processes: Keyword.get(opts, :max_retained_processes)
+      max_retained_processes: Keyword.get(opts, :max_retained_processes),
+      process_diagnostics?: Keyword.get(opts, :process_diagnostics, false)
     }
   end
 
   defp ensure_started! do
     {:ok, _} = Application.ensure_all_started(:gatehouse)
-    {:ok, _} = Application.ensure_all_started(:req)
+    {:ok, _} = Application.ensure_all_started(:inets)
   end
 
   defp run(%{scenario: "direct_http_baseline"} = opts), do: direct_http_baseline(opts)
@@ -689,22 +695,35 @@ defmodule Gatehouse.LoadTest do
   defp request_once(url, host) do
     start = System.monotonic_time()
 
-    result =
-      Req.get(url,
-        headers: [{"host", host}],
-        retry: false,
-        receive_timeout: 15_000
-      )
+    request =
+      {String.to_charlist(url),
+       [{~c"host", String.to_charlist(host)}, {~c"connection", ~c"close"}]}
 
+    http_opts = [timeout: 15_000, connect_timeout: 5_000]
+    opts = [body_format: :binary]
+    result = :httpc.request(:get, request, http_opts, opts)
     duration = System.monotonic_time() - start
 
     case result do
-      {:ok, response} -> %{status: response.status, body: response.body, duration: duration}
-      {:error, reason} -> %{status: {:error, reason}, body: "", duration: duration}
+      {:ok, {{_version, status, _reason}, _headers, body}} ->
+        %{status: status, body: body, duration: duration}
+
+      {:error, reason} ->
+        %{status: {:error, reason}, body: "", duration: duration}
     end
   end
 
-  defp print_report(result, telemetry, before_vm, after_load_vm, settled_vm, samples) do
+  defp print_report(
+         result,
+         telemetry,
+         before_vm,
+         after_load_vm,
+         settled_vm,
+         samples,
+         before_processes,
+         after_processes,
+         opts
+       ) do
     IO.puts("\n== Gatehouse load test ==")
     IO.inspect(Map.drop(result, [:client_durations]), label: "scenario")
     print_duration_summary("client", result.client_durations)
@@ -737,6 +756,11 @@ defmodule Gatehouse.LoadTest do
 
     IO.puts("\n== VM samples ==")
     print_sample_summary(samples)
+
+    if opts.process_diagnostics? do
+      IO.puts("\n== Retained process diagnostics ==")
+      print_retained_process_diagnostics(before_processes, after_processes)
+    end
   end
 
   defp print_duration_summary(label, durations) do
@@ -887,6 +911,76 @@ defmodule Gatehouse.LoadTest do
         _class, _reason -> :ok
       end
     end)
+  end
+
+  defp process_snapshot do
+    Process.list()
+    |> Map.new(fn pid -> {pid, process_diagnostic(pid)} end)
+  end
+
+  defp process_diagnostic(pid) do
+    keys = [
+      :registered_name,
+      :initial_call,
+      :current_function,
+      :message_queue_len,
+      :memory,
+      :links,
+      :monitors,
+      :monitored_by
+    ]
+
+    case Process.info(pid, keys) do
+      info when is_list(info) ->
+        %{
+          pid: inspect(pid),
+          name: info[:registered_name],
+          initial_call: info[:initial_call],
+          current_function: info[:current_function],
+          message_queue_len: info[:message_queue_len],
+          memory: info[:memory],
+          links: length(info[:links] || []),
+          monitors: length(info[:monitors] || []),
+          monitored_by: length(info[:monitored_by] || [])
+        }
+
+      _other ->
+        %{pid: inspect(pid), current_function: :dead, memory: 0}
+    end
+  end
+
+  defp print_retained_process_diagnostics(before, after_processes) do
+    before_pids = MapSet.new(Map.keys(before))
+
+    retained =
+      after_processes
+      |> Enum.reject(fn {pid, _info} -> MapSet.member?(before_pids, pid) end)
+      |> Enum.map(fn {_pid, info} -> info end)
+
+    IO.inspect(%{count: length(retained), groups: process_groups(retained)}, limit: 30)
+
+    retained
+    |> Enum.sort_by(& &1.memory, :desc)
+    |> Enum.take(20)
+    |> IO.inspect(label: "largest_retained", limit: 20)
+  end
+
+  defp process_groups(processes) do
+    processes
+    |> Enum.group_by(fn info -> {info.name, info.initial_call, info.current_function} end)
+    |> Enum.map(fn {key, members} ->
+      {name, initial_call, current_function} = key
+
+      %{
+        count: length(members),
+        name: name,
+        initial_call: initial_call,
+        current_function: current_function,
+        total_memory: Enum.sum(Enum.map(members, & &1.memory))
+      }
+    end)
+    |> Enum.sort_by(& &1.count, :desc)
+    |> Enum.take(20)
   end
 
   defp vm_stats do
