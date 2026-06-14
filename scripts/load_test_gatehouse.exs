@@ -248,7 +248,9 @@ defmodule Gatehouse.LoadTest do
     before_processes = process_snapshot()
 
     try do
+      start_profile(opts.profile)
       result = run(opts)
+      profile_report = stop_profile(opts.profile)
       after_load_vm = vm_stats()
       settled_vm = settle_vm(opts)
       samples = VMSampler.stop()
@@ -263,7 +265,8 @@ defmodule Gatehouse.LoadTest do
         samples,
         before_processes,
         process_snapshot(),
-        opts
+        opts,
+        profile_report
       )
 
       assert_thresholds!(opts, telemetry, before_vm, settled_vm)
@@ -290,7 +293,8 @@ defmodule Gatehouse.LoadTest do
           max_proxy_p99_ms: :float,
           max_retained_total_mb: :float,
           max_retained_processes: :integer,
-          process_diagnostics: :boolean
+          process_diagnostics: :boolean,
+          profile: :string
         ]
       )
 
@@ -311,7 +315,8 @@ defmodule Gatehouse.LoadTest do
       max_proxy_p99_ms: Keyword.get(opts, :max_proxy_p99_ms),
       max_retained_total_mb: Keyword.get(opts, :max_retained_total_mb),
       max_retained_processes: Keyword.get(opts, :max_retained_processes),
-      process_diagnostics?: Keyword.get(opts, :process_diagnostics, false)
+      process_diagnostics?: Keyword.get(opts, :process_diagnostics, false),
+      profile: Keyword.get(opts, :profile)
     }
   end
 
@@ -722,7 +727,8 @@ defmodule Gatehouse.LoadTest do
          samples,
          before_processes,
          after_processes,
-         opts
+         opts,
+         profile_report
        ) do
     IO.puts("\n== Gatehouse load test ==")
     IO.inspect(Map.drop(result, [:client_durations]), label: "scenario")
@@ -761,6 +767,11 @@ defmodule Gatehouse.LoadTest do
       IO.puts("\n== Retained process diagnostics ==")
       print_retained_process_diagnostics(before_processes, after_processes)
     end
+
+    if profile_report do
+      IO.puts("\n== Profile ==")
+      IO.puts(profile_report)
+    end
   end
 
   defp print_duration_summary(label, durations) do
@@ -794,6 +805,46 @@ defmodule Gatehouse.LoadTest do
     |> System.convert_time_unit(:native, :microsecond)
     |> Kernel./(1_000)
     |> Float.round(3)
+  end
+
+  defp start_profile(nil), do: :ok
+
+  defp start_profile("eprof") do
+    ensure_tools_on_code_path!()
+    {:ok, _pid} = :eprof.start()
+    :eprof.start_profiling(Process.list())
+  end
+
+  defp start_profile(profile), do: raise("unknown profiler #{inspect(profile)}; expected eprof")
+
+  defp stop_profile(nil), do: nil
+
+  defp stop_profile("eprof") do
+    :eprof.stop_profiling()
+    :eprof.analyze(:total)
+    :eprof.stop()
+    "eprof results printed above"
+  end
+
+  defp ensure_tools_on_code_path! do
+    case :code.which(:eprof) do
+      :non_existing ->
+        tools_ebin =
+          :code.lib_dir()
+          |> to_string()
+          |> Path.join("tools-*/ebin")
+          |> Path.wildcard()
+          |> List.first()
+
+        unless tools_ebin do
+          raise "Erlang tools ebin not found; cannot run eprof"
+        end
+
+        true = :code.add_patha(String.to_charlist(tools_ebin))
+
+      _path ->
+        :ok
+    end
   end
 
   defp assert_thresholds!(opts, telemetry, before_vm, settled_vm) do

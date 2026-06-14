@@ -66,6 +66,7 @@ Common options:
 --max-retained-total-mb N Fail if retained total memory exceeds N MiB
 --max-retained-processes N Fail if retained process count exceeds N
 --process-diagnostics Print retained process groups and largest retained processes
+--profile eprof      Run the load phase under Erlang `:eprof` and print totals
 ```
 
 ## Metrics collected
@@ -98,6 +99,11 @@ For SafeRPC scenarios, compare:
 - Gatehouse proxy latency — routing + upstream + response conversion;
 - SafeRPC request latency — SafeRPC call only;
 - SafeRPC pool checkout latency — client pool lookup/open overhead.
+
+For profiling, prefer external drivers such as `bombardier` with `--profile
+eprof`. Profiling the built-in driver includes the Elixir client workload and can
+produce misleading results or exaggerate peer-close timing. External drivers keep
+`:eprof` focused on Gatehouse, Livery, Gun, and SafeRPC server work.
 
 ## External load generators
 
@@ -181,6 +187,15 @@ A follow-up 10,000 request / 100 concurrency restart run recovered correctly:
 
 The remaining retained processes are the Gatehouse/Livery listener and acceptor
 processes kept alive for the configured route.
+
+A small `:eprof` pass using `bombardier` showed current hotspots are mostly in
+network I/O and HTTP parsing rather than Gatehouse business logic:
+
+- HTTP proxy: `erts_internal:port_command/3`, H1 header lowercasing/parsing,
+  `binary:match/2`, `String.downcase/3`, and connection-pool liveness checks.
+- SafeRPC proxy: `erts_internal:port_control/3`, `port_command/3`,
+  `gen:do_call/4`, telemetry sample collection, H1 parsing, and ETF
+  encode/decode.
 
 ## Stress cases to add next
 
