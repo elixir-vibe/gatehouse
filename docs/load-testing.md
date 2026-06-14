@@ -36,6 +36,10 @@ Available scenarios:
   backend.
 - `safe_rpc_blue_green` — traffic starts on a blue SafeRPC backend, switches to a
   green SafeRPC backend during load, and verifies both phases.
+- `safe_rpc_restart` — traffic starts on a SafeRPC backend, the backend is
+  stopped mid-run, then restarted on the same socket to exercise pool
+  invalidation and recovery. This scenario requires the built-in driver because
+  the harness coordinates the restart per request.
 - `safe_rpc_failure` — Gatehouse points at a missing SafeRPC socket and verifies
   failure behavior is surfaced as gateway errors without crashing the proxy.
 
@@ -131,8 +135,8 @@ fast with a clear error.
 
 1. WebSocket echo and long-lived connection churn.
 2. Streaming and slow-response backends.
-3. SafeRPC backend crash/restart during load.
-4. Blue-green switching while requests are in flight.
+3. WebSocket echo and long-lived connection churn.
+4. Streaming and slow-response backends.
 5. Soak tests with process/memory leak assertions.
 6. Threshold-based leak assertions for retained memory/process growth.
 7. Livery `instrument` metrics exporter wiring for lower-level HTTP server

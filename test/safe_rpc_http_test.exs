@@ -163,7 +163,7 @@ defmodule Gatehouse.SafeRPCHTTPTest do
     response = Gatehouse.LiveryHandler.handle(request)
 
     assert Gatehouse.Livery.Response.status(response) == 502
-    assert Gatehouse.Livery.Response.body(response) == {:full, "bad gateway: :enoent"}
+    assert Gatehouse.Livery.Response.body(response) == {:full, "bad gateway"}
   end
 
   test "emits SafeRPC telemetry when forwarding requests" do

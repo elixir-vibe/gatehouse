@@ -271,6 +271,7 @@ defmodule Gatehouse.LoadTest do
   defp run(%{scenario: "http_baseline"} = opts), do: http_baseline(opts)
   defp run(%{scenario: "safe_rpc_baseline"} = opts), do: safe_rpc_baseline(opts)
   defp run(%{scenario: "safe_rpc_blue_green"} = opts), do: safe_rpc_blue_green(opts)
+  defp run(%{scenario: "safe_rpc_restart"} = opts), do: safe_rpc_restart(opts)
   defp run(%{scenario: "safe_rpc_failure"} = opts), do: safe_rpc_failure(opts)
   defp run(%{scenario: scenario}), do: raise("unknown scenario: #{scenario}")
 
@@ -334,6 +335,61 @@ defmodule Gatehouse.LoadTest do
     result
     |> Map.put(:scenario, "safe_rpc_blue_green")
     |> Map.put(:blue_green_bodies, result.bodies)
+  end
+
+  defp safe_rpc_restart(%{driver: driver}) when driver != "builtin" do
+    raise "safe_rpc_restart requires --driver builtin so the harness can restart the backend during request generation"
+  end
+
+  defp safe_rpc_restart(opts) do
+    socket = socket_path("restart")
+    File.rm(socket)
+    {:ok, server} = SafeRPCServer.start_link(socket: socket, label: "before_restart")
+    server_ref = Agent.start_link(fn -> server end) |> elem(1)
+    host = "safe-rpc-restart.localhost"
+
+    start_gatehouse!(%{host: host, target: socket, kind: :safe_rpc, service: :safe_rpc_restart})
+
+    stop_at = max(1, div(opts.requests, 3))
+    restart_at = max(stop_at + 1, div(opts.requests * 2, 3))
+    counter = :atomics.new(1, [])
+    stopped = :atomics.new(1, [])
+    restarted = :atomics.new(1, [])
+
+    result =
+      run_load(opts, host, fn index ->
+        current = :atomics.add_get(counter, 1, 1)
+
+        if current >= stop_at and :atomics.compare_exchange(stopped, 1, 0, 1) == :ok do
+          Agent.get_and_update(server_ref, fn pid ->
+            GenServer.stop(pid)
+            {pid, nil}
+          end)
+        end
+
+        if current >= restart_at and :atomics.compare_exchange(restarted, 1, 0, 1) == :ok do
+          File.rm(socket)
+
+          {:ok, restarted_server} =
+            SafeRPCServer.start_link(socket: socket, label: "after_restart")
+
+          Agent.update(server_ref, fn _pid -> restarted_server end)
+        end
+
+        index
+      end)
+
+    Agent.get(server_ref, & &1)
+    |> case do
+      pid when is_pid(pid) -> GenServer.stop(pid)
+      _nil -> :ok
+    end
+
+    Agent.stop(server_ref)
+
+    result
+    |> Map.put(:scenario, "safe_rpc_restart")
+    |> Map.put(:restart_points, %{stop_at: stop_at, restart_at: restart_at})
   end
 
   defp safe_rpc_failure(opts) do

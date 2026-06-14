@@ -11,6 +11,10 @@ defmodule Gatehouse.SafeRPC.Pool do
     GenServer.call(__MODULE__, {:checkout, socket, opts})
   end
 
+  def invalidate(socket, opts \\ []) when is_binary(socket) do
+    GenServer.call(__MODULE__, {:invalidate, socket, opts})
+  end
+
   @impl true
   def init(_state), do: {:ok, %{pools: %{}, refs: %{}}}
 
@@ -29,6 +33,11 @@ defmodule Gatehouse.SafeRPC.Pool do
       _missing ->
         open_pool(key, socket, opts, state)
     end
+  end
+
+  def handle_call({:invalidate, socket, opts}, _from, state) do
+    key = {socket, Keyword.get(opts, :shards, 1), Keyword.get(opts, :cap)}
+    {:reply, :ok, stop_and_remove_pool(state, key)}
   end
 
   @impl true
@@ -81,5 +90,17 @@ defmodule Gatehouse.SafeRPC.Pool do
 
   defp remove_pool(state, key) do
     %{state | pools: Map.delete(state.pools, key)}
+  end
+
+  defp stop_and_remove_pool(state, key) do
+    case Map.fetch(state.pools, key) do
+      {:ok, pid} when is_pid(pid) ->
+        DynamicSupervisor.terminate_child(Gatehouse.SafeRPC.PoolSupervisor, pid)
+
+      _missing ->
+        :ok
+    end
+
+    remove_pool(state, key)
   end
 end

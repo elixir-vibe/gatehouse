@@ -33,7 +33,7 @@ defmodule Gatehouse.LiveryHandler do
 
       {:error, reason} ->
         emit_request_telemetry(start, nil, nil, 502, %{error: reason})
-        Response.text(502, "bad gateway: #{inspect(reason)}")
+        Response.text(502, "bad gateway")
     end
   end
 
@@ -68,17 +68,20 @@ defmodule Gatehouse.LiveryHandler do
           op: target.op,
           service: service,
           target_id: target_id,
-          socket: target.socket
+          socket: target.socket,
+          shards: target.shards
         )
 
       {:error, reason} ->
-        Response.text(502, "bad gateway: #{inspect(reason)}")
+        Response.text(502, upstream_error_body(reason))
     end
   end
 
   defp forward_target(request, %{kind: :http, url: url}, _service, _target_id) do
     maybe_upgrade_websocket(request, url) || forward(request, url)
   end
+
+  defp upstream_error_body(_reason), do: "bad gateway"
 
   defp maybe_upgrade_websocket(request, target_url) do
     if websocket_upgrade?(request) do
