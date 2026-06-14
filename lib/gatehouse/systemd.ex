@@ -12,7 +12,7 @@ defmodule Gatehouse.Systemd do
     unit_file =
       UnitFile.service(
         unit: [
-          description: "Xamal Proxy",
+          description: "Gatehouse Edge Proxy",
           after: "network-online.target",
           wants: "network-online.target"
         ],

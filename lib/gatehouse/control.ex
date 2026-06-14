@@ -1,6 +1,6 @@
 defmodule Gatehouse.Control do
   @moduledoc """
-  Control-plane API for local or distributed Xamal deployers.
+  Control-plane API for local or distributed Elixir deployers.
 
   A local caller can invoke these functions directly. A remote deployer can use
   Erlang distribution:

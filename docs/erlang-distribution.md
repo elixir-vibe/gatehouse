@@ -1,6 +1,6 @@
 # Secure Erlang distribution setup
 
-`gatehouse` is controlled with Erlang distribution so Xamal can call:
+`gatehouse` is controlled with Erlang distribution so deploy tooling can call:
 
 ```elixir
 :rpc.call(:"gatehouse@host", Gatehouse.Control, :deploy, [spec], 60_000)
@@ -30,7 +30,7 @@ Example local deploy node:
 
 ```sh
 elixir \
-  --sname xamal_deployer \
+  --sname gatehouse_deployer \
   --cookie "$GATEHOUSE_COOKIE" \
   --eval 'IO.inspect(:rpc.call(:"gatehouse@127.0.0.1", Gatehouse.Control, :routes, [], 5000))'
 ```

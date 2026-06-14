@@ -40,7 +40,7 @@ defmodule Gatehouse.MixProject do
   end
 
   defp description do
-    "OTP-native edge proxy and blue-green traffic switcher for Xamal deployments."
+    "OTP-native edge proxy and blue-green traffic switcher for Elixir deployments."
   end
 
   defp deps do

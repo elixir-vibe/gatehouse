@@ -1,27 +1,27 @@
-defmodule Gatehouse.Integration.XamalDeployFlowTest do
+defmodule Gatehouse.Integration.DeployFlowTest do
   use ExUnit.Case, async: false
 
-  test "simulates Xamal blue-green deploy calls against gatehouse" do
+  test "simulates blue-green deploy calls against gatehouse" do
     {:ok, blue} =
-      DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:xamal_blue))
+      DemoApp.Server.start_link(port: 0, label: "blue", name: unique_name(:deploy_blue))
 
     {:ok, green} =
-      DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:xamal_green))
+      DemoApp.Server.start_link(port: 0, label: "green", name: unique_name(:deploy_green))
 
     {:ok, listener} =
       Gatehouse.LiveryListener.start_link(port: 0, name: unique_name(:gatehouse))
 
     proxy_port = listener_port(listener)
-    host = "xamal-#{System.unique_integer([:positive])}.test"
+    host = "deploy-#{System.unique_integer([:positive])}.test"
 
-    assert {:ok, _state} = xamal_deploy("demo", host, "blue", DemoApp.Server.port(blue))
+    assert {:ok, _state} = deploy("demo", host, "blue", DemoApp.Server.port(blue))
     assert {:ok, "demo_app:blue\n"} = get(proxy_port, host)
 
-    assert {:ok, _state} = xamal_deploy("demo", host, "green", DemoApp.Server.port(green))
+    assert {:ok, _state} = deploy("demo", host, "green", DemoApp.Server.port(green))
     assert {:ok, "demo_app:green\n"} = get(proxy_port, host)
   end
 
-  defp xamal_deploy(service, host, target_id, port) do
+  defp deploy(service, host, target_id, port) do
     Gatehouse.Control.deploy(%{
       service: service,
       hosts: [host],

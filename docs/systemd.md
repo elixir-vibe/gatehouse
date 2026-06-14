@@ -1,8 +1,7 @@
 # Running gatehouse with systemd
 
-`Gatehouse.Systemd.unit/1` renders the service unit through the local `systemd`
-package's `Systemd.UnitFile` builder and validator. The dependency is currently
-wired by local path until it is published to Hex.
+`Gatehouse.Systemd.unit/1` renders the service unit through SystemdKit's
+`Systemd.UnitFile` builder and validator.
 
 ```elixir
 Gatehouse.Systemd.unit(
@@ -17,7 +16,7 @@ Example unit:
 
 ```ini
 [Unit]
-Description=Xamal Proxy
+Description=Gatehouse Edge Proxy
 After=network-online.target
 Wants=network-online.target
 [Service]
