@@ -205,15 +205,18 @@ defmodule Gatehouse.LoadTest do
       after_load_vm = vm_stats()
       settled_vm = settle_vm(opts)
       samples = VMSampler.stop()
+      telemetry = TelemetryCollector.snapshot()
 
       print_report(
         result,
-        TelemetryCollector.snapshot(),
+        telemetry,
         before_vm,
         after_load_vm,
         settled_vm,
         samples
       )
+
+      assert_thresholds!(opts, telemetry, before_vm, settled_vm)
     after
       TelemetryCollector.detach()
     end
@@ -232,7 +235,11 @@ defmodule Gatehouse.LoadTest do
           gc: :boolean,
           driver: :string,
           duration: :string,
-          rate: :string
+          rate: :string,
+          max_error_rate: :float,
+          max_proxy_p99_ms: :float,
+          max_retained_total_mb: :float,
+          max_retained_processes: :integer
         ]
       )
 
@@ -248,7 +255,11 @@ defmodule Gatehouse.LoadTest do
       gc?: Keyword.get(opts, :gc, true),
       driver: Keyword.get(opts, :driver, "builtin"),
       duration: Keyword.get(opts, :duration, "30s"),
-      rate: Keyword.get(opts, :rate, "1000/s")
+      rate: Keyword.get(opts, :rate, "1000/s"),
+      max_error_rate: Keyword.get(opts, :max_error_rate),
+      max_proxy_p99_ms: Keyword.get(opts, :max_proxy_p99_ms),
+      max_retained_total_mb: Keyword.get(opts, :max_retained_total_mb),
+      max_retained_processes: Keyword.get(opts, :max_retained_processes)
     }
   end
 
@@ -544,22 +555,24 @@ defmodule Gatehouse.LoadTest do
   end
 
   defp print_duration_summary(label, durations) do
+    case duration_summary(durations) do
+      nil -> IO.puts("#{label}: no durations")
+      summary -> IO.inspect(summary, label: label)
+    end
+  end
+
+  defp duration_summary([]), do: nil
+
+  defp duration_summary(durations) do
     durations = Enum.sort(durations)
 
-    if durations == [] do
-      IO.puts("#{label}: no durations")
-    else
-      IO.inspect(
-        %{
-          count: length(durations),
-          p50_ms: percentile_ms(durations, 0.50),
-          p95_ms: percentile_ms(durations, 0.95),
-          p99_ms: percentile_ms(durations, 0.99),
-          max_ms: native_to_ms(List.last(durations))
-        },
-        label: label
-      )
-    end
+    %{
+      count: length(durations),
+      p50_ms: percentile_ms(durations, 0.50),
+      p95_ms: percentile_ms(durations, 0.95),
+      p99_ms: percentile_ms(durations, 0.99),
+      max_ms: native_to_ms(List.last(durations))
+    }
   end
 
   defp percentile_ms(sorted, percentile) do
@@ -572,6 +585,98 @@ defmodule Gatehouse.LoadTest do
     |> System.convert_time_unit(:native, :microsecond)
     |> Kernel./(1_000)
     |> Float.round(3)
+  end
+
+  defp assert_thresholds!(opts, telemetry, before_vm, settled_vm) do
+    failures = threshold_failures(opts, telemetry, before_vm, settled_vm)
+
+    if failures != [] do
+      IO.puts("\n== Threshold failures ==")
+      Enum.each(failures, &IO.puts("- #{&1}"))
+      raise "load test threshold failure"
+    end
+  end
+
+  defp threshold_failures(opts, telemetry, before_vm, settled_vm) do
+    []
+    |> maybe_check_error_rate(opts.max_error_rate, telemetry)
+    |> maybe_check_proxy_p99(opts.max_proxy_p99_ms, telemetry)
+    |> maybe_check_retained_total(opts.max_retained_total_mb, before_vm, settled_vm)
+    |> maybe_check_retained_processes(opts.max_retained_processes, before_vm, settled_vm)
+    |> Enum.reverse()
+  end
+
+  defp maybe_check_error_rate(failures, nil, _telemetry), do: failures
+
+  defp maybe_check_error_rate(failures, max_error_rate, telemetry) do
+    summary = Map.get(telemetry, [:gatehouse, :proxy, :request, :stop])
+    error_rate = proxy_error_rate(summary)
+
+    if error_rate > max_error_rate do
+      ["proxy error rate #{Float.round(error_rate, 4)} exceeded #{max_error_rate}" | failures]
+    else
+      failures
+    end
+  end
+
+  defp proxy_error_rate(nil), do: 0.0
+
+  defp proxy_error_rate(%{count: 0}), do: 0.0
+
+  defp proxy_error_rate(%{count: count, statuses: statuses}) do
+    errors =
+      Enum.reduce(statuses, 0, fn
+        {status, _status_count}, acc when is_integer(status) and status >= 200 and status < 500 ->
+          acc
+
+        {_status, status_count}, acc ->
+          acc + status_count
+      end)
+
+    errors / count
+  end
+
+  defp maybe_check_proxy_p99(failures, nil, _telemetry), do: failures
+
+  defp maybe_check_proxy_p99(failures, max_p99_ms, telemetry) do
+    summary = Map.get(telemetry, [:gatehouse, :proxy, :request, :stop])
+    duration_summary = summary && duration_summary(summary.durations)
+    p99_ms = duration_summary && duration_summary.p99_ms
+
+    cond do
+      is_nil(p99_ms) ->
+        failures
+
+      p99_ms > max_p99_ms ->
+        ["proxy p99 #{p99_ms}ms exceeded #{max_p99_ms}ms" | failures]
+
+      true ->
+        failures
+    end
+  end
+
+  defp maybe_check_retained_total(failures, nil, _before_vm, _settled_vm), do: failures
+
+  defp maybe_check_retained_total(failures, max_mb, before_vm, settled_vm) do
+    retained_mb = (settled_vm.memory.total - before_vm.memory.total) / 1_048_576
+
+    if retained_mb > max_mb do
+      ["retained total memory #{Float.round(retained_mb, 3)}MiB exceeded #{max_mb}MiB" | failures]
+    else
+      failures
+    end
+  end
+
+  defp maybe_check_retained_processes(failures, nil, _before_vm, _settled_vm), do: failures
+
+  defp maybe_check_retained_processes(failures, max_processes, before_vm, settled_vm) do
+    retained_processes = settled_vm.process_count - before_vm.process_count
+
+    if retained_processes > max_processes do
+      ["retained process count #{retained_processes} exceeded #{max_processes}" | failures]
+    else
+      failures
+    end
   end
 
   defp settle_vm(opts) do

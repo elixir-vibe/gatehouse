@@ -52,6 +52,10 @@ Common options:
 --sample-interval MS Periodic VM/process sampling interval; default: 1000
 --settle-ms MS       Time to wait after load before retained-memory sample; default: 1000
 --no-gc              Disable forced garbage collection before/after settle
+--max-error-rate N   Fail if proxy error rate is above N, e.g. 0 or 0.01
+--max-proxy-p99-ms N Fail if sampled proxy p99 latency is above N milliseconds
+--max-retained-total-mb N Fail if retained total memory exceeds N MiB
+--max-retained-processes N Fail if retained process count exceeds N
 ```
 
 ## Metrics collected
@@ -74,7 +78,9 @@ count, reductions, and the top memory-consuming processes in the last sample.
 Telemetry event counts, statuses, and result counts are exact. Duration
 percentiles are calculated from a bounded reservoir sample of up to 10,000
 measurements per event so long stress runs do not turn the collector into the
-main memory consumer.
+main memory consumer. Optional threshold flags turn the harness into a CI-style
+performance guard by raising on excessive error rate, proxy p99 latency,
+retained memory, or retained process growth.
 
 For SafeRPC scenarios, compare:
 
