@@ -4,7 +4,7 @@
 
 ### Added
 
-- Added Phoenix-friendly development proxy tasks: `mix gatehouse.phx`, `mix gatehouse.run`, `mix gatehouse.trust`, and `mix gatehouse.routes`.
+- Added Phoenix-friendly development proxy tasks and documentation: `mix gatehouse.phx`, `mix gatehouse.run`, `mix gatehouse.trust`, and `mix gatehouse.routes`.
 - Added local development CA and `.localhost` host certificate generation for HTTPS dev proxying.
 - Added local HTTPS HTTP/1.1 proxy support for Phoenix apps, including LiveView/WebSocket traffic.
 - Added `--open`, `--no-tls`, `--host`, `--proxy-port`, `--backend-port`, and `--cert-dir` options for development proxy tasks.

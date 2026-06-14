@@ -170,7 +170,8 @@ config :my_app, MyAppWeb.Endpoint,
 
 The development CA and host certificates live under `~/.gatehouse/dev_certs` by
 default. `mix gatehouse.trust` creates the CA and prints OS-specific trust-store
-instructions; it does not run `sudo` automatically.
+instructions; it does not run `sudo` automatically. See
+[`docs/phoenix-dev.md`](docs/phoenix-dev.md) for details and troubleshooting.
 
 ## Development
 
