@@ -110,7 +110,8 @@ defmodule Gatehouse.MixProject do
         "docs/phoenix-dev.md",
         "docs/systemd.md",
         "docs/erlang-distribution.md",
-        "docs/telemetry.md"
+        "docs/telemetry.md",
+        "docs/load-testing.md"
       ],
       groups_for_extras: [Guides: ~r/docs\//],
       source_ref: "v#{@version}",

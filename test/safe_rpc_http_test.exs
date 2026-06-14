@@ -113,6 +113,39 @@ defmodule Gatehouse.SafeRPCHTTPTest do
     GenServer.stop(server)
   end
 
+  test "returns gateway error when SafeRPC socket is missing" do
+    socket = socket_path("missing")
+    File.rm(socket)
+
+    config =
+      Gatehouse.Config.eval!("""
+      import Gatehouse.Config
+
+      service :safe_missing do
+        host "safe-missing.example.com"
+        target :main, safe_rpc: [socket: #{inspect(socket)}], active: true
+      end
+      """)
+
+    assert :ok = Gatehouse.Control.apply_config(config)
+
+    request =
+      :livery_req.new(%{
+        method: "GET",
+        scheme: "https",
+        authority: "safe-missing.example.com",
+        path: "/hello",
+        raw_query: "",
+        headers: [{"host", "safe-missing.example.com"}],
+        body: :empty
+      })
+
+    response = Gatehouse.LiveryHandler.handle(request)
+
+    assert Gatehouse.Livery.Response.status(response) == 502
+    assert Gatehouse.Livery.Response.body(response) == {:full, "bad gateway: :enoent"}
+  end
+
   test "emits SafeRPC telemetry when forwarding requests" do
     test_pid = self()
     ref = make_ref()

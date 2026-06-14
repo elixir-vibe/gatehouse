@@ -32,6 +32,14 @@ defmodule Gatehouse.SafeRPC.Pool do
   end
 
   defp open_pool(key, socket, opts, state) do
+    if File.exists?(socket) do
+      start_pool(key, socket, opts, state)
+    else
+      {:reply, {:error, :enoent}, state}
+    end
+  end
+
+  defp start_pool(key, socket, opts, state) do
     pool_opts = Keyword.merge(opts, socket: socket, shards: Keyword.get(opts, :shards, 1))
 
     case SafeRPC.ClientPool.start_link(pool_opts) do
