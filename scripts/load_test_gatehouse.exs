@@ -185,9 +185,18 @@ defmodule Gatehouse.LoadTest do
 
     try do
       result = run(opts)
-      after_vm = vm_stats()
+      after_load_vm = vm_stats()
+      settled_vm = settle_vm(opts)
       samples = VMSampler.stop()
-      print_report(result, TelemetryCollector.snapshot(), before_vm, after_vm, samples)
+
+      print_report(
+        result,
+        TelemetryCollector.snapshot(),
+        before_vm,
+        after_load_vm,
+        settled_vm,
+        samples
+      )
     after
       TelemetryCollector.detach()
     end
@@ -201,7 +210,9 @@ defmodule Gatehouse.LoadTest do
           requests: :integer,
           concurrency: :integer,
           path: :string,
-          sample_interval: :integer
+          sample_interval: :integer,
+          settle_ms: :integer,
+          gc: :boolean
         ]
       )
 
@@ -212,7 +223,9 @@ defmodule Gatehouse.LoadTest do
       requests: Keyword.get(opts, :requests, 1_000),
       concurrency: Keyword.get(opts, :concurrency, 50),
       path: Keyword.get(opts, :path, "/bench"),
-      sample_interval: Keyword.get(opts, :sample_interval, 1_000)
+      sample_interval: Keyword.get(opts, :sample_interval, 1_000),
+      settle_ms: Keyword.get(opts, :settle_ms, 1_000),
+      gc?: Keyword.get(opts, :gc, true)
     }
   end
 
@@ -395,7 +408,7 @@ defmodule Gatehouse.LoadTest do
     end
   end
 
-  defp print_report(result, telemetry, before_vm, after_vm, samples) do
+  defp print_report(result, telemetry, before_vm, after_load_vm, settled_vm, samples) do
     IO.puts("\n== Gatehouse load test ==")
     IO.inspect(Map.drop(result, [:client_durations]), label: "scenario")
     print_duration_summary("client", result.client_durations)
@@ -416,7 +429,15 @@ defmodule Gatehouse.LoadTest do
     end)
 
     IO.puts("\n== VM stats ==")
-    IO.inspect(%{before: before_vm, after: after_vm, delta: vm_delta(before_vm, after_vm)})
+
+    IO.inspect(%{
+      before: before_vm,
+      after_load: after_load_vm,
+      after_settle: settled_vm,
+      load_delta: vm_delta(before_vm, after_load_vm),
+      retained_delta: vm_delta(before_vm, settled_vm),
+      settle_delta: vm_delta(after_load_vm, settled_vm)
+    })
 
     IO.puts("\n== VM samples ==")
     print_sample_summary(samples)
@@ -451,6 +472,31 @@ defmodule Gatehouse.LoadTest do
     |> System.convert_time_unit(:native, :microsecond)
     |> Kernel./(1_000)
     |> Float.round(3)
+  end
+
+  defp settle_vm(opts) do
+    if opts.gc? do
+      force_full_sweep()
+    end
+
+    Process.sleep(opts.settle_ms)
+
+    if opts.gc? do
+      force_full_sweep()
+    end
+
+    vm_stats()
+  end
+
+  defp force_full_sweep do
+    Process.list()
+    |> Enum.each(fn pid ->
+      try do
+        :erlang.garbage_collect(pid)
+      catch
+        _class, _reason -> :ok
+      end
+    end)
   end
 
   defp vm_stats do

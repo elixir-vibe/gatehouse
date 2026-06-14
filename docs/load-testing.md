@@ -46,6 +46,8 @@ Common options:
 --concurrency N      Concurrent client tasks; default: 50
 --path PATH          Request path; default: /bench
 --sample-interval MS Periodic VM/process sampling interval; default: 1000
+--settle-ms MS       Time to wait after load before retained-memory sample; default: 1000
+--no-gc             Disable forced garbage collection before/after settle
 ```
 
 ## Metrics collected
@@ -59,9 +61,11 @@ The harness attaches to Gatehouse telemetry and reports:
 - `[:gatehouse, :health_check, :stop]`
 
 It also reports client-side latency, status counts, BEAM process count, memory,
-and reduction count before and after the scenario. During the run it samples VM
-state periodically, including total memory, memory breakdown, process count,
-reductions, and the top memory-consuming processes in the last sample.
+and reduction count before load, immediately after load, and after a settle
+period. By default the harness forces garbage collection before and after the
+settle wait so retained-memory deltas are easier to spot. During the run it
+samples VM state periodically, including total memory, memory breakdown, process
+count, reductions, and the top memory-consuming processes in the last sample.
 
 For SafeRPC scenarios, compare:
 
@@ -103,6 +107,6 @@ printf 'GET http://127.0.0.1:PORT/bench\nHost: safe-rpc-bench.localhost\n' \
 3. SafeRPC backend crash/restart during load.
 4. Blue-green switching while requests are in flight.
 5. Soak tests with process/memory leak assertions.
-6. Leak assertions after warmup and forced garbage collection.
+6. Threshold-based leak assertions for retained memory/process growth.
 7. Livery `instrument` metrics exporter wiring for lower-level HTTP server
    metrics.
