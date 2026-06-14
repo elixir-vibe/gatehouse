@@ -166,7 +166,7 @@ defmodule Gatehouse.SafeRPCHTTPTest do
   defp socket_path(name) do
     Path.join(
       System.tmp_dir!(),
-      "xamal-safe-rpc-#{name}-#{System.unique_integer([:positive])}.sock"
+      "gatehouse-safe-rpc-#{name}-#{System.unique_integer([:positive])}.sock"
     )
   end
 end
