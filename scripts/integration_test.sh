@@ -1,10 +1,10 @@
 #!/usr/bin/env sh
 set -eu
 
-VM_NAME="${XAMAL_PROXY_LIMA_VM:-xamal-proxy-test}"
-WORKSPACE_DIR="${XAMAL_PROXY_WORKSPACE_DIR:-$(cd .. && pwd)}"
-REMOTE_BASE="${XAMAL_PROXY_REMOTE_BASE:-~/xamal-proxy-integration}"
-REMOTE_DIR="$REMOTE_BASE/xamal_proxy"
+VM_NAME="${GATEHOUSE_LIMA_VM:-gatehouse-test}"
+WORKSPACE_DIR="${GATEHOUSE_WORKSPACE_DIR:-$(cd .. && pwd)}"
+REMOTE_BASE="${GATEHOUSE_REMOTE_BASE:-~/gatehouse-integration}"
+REMOTE_DIR="$REMOTE_BASE/gatehouse"
 LIMACTL="${LIMACTL:-limactl}"
 
 if ! command -v "$LIMACTL" >/dev/null 2>&1; then
@@ -25,10 +25,10 @@ copy_repo() {
 
 copy_repo safe_rpc
 copy_repo systemdkit
-copy_repo xamal_proxy
+copy_repo gatehouse
 
 "$LIMACTL" shell "$VM_NAME" -- sh -lc "
   cd $REMOTE_DIR &&
   mix deps.get >/dev/null &&
-  XAMAL_PROXY_INTEGRATION=1 mix test
+  GATEHOUSE_INTEGRATION=1 mix test
 "

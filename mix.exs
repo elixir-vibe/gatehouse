@@ -1,12 +1,12 @@
-defmodule XamalProxy.MixProject do
+defmodule Gatehouse.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/dannote/xamal_proxy"
+  @source_url "https://github.com/dannote/gatehouse"
 
   def project do
     [
-      app: :xamal_proxy,
+      app: :gatehouse,
       version: @version,
       elixir: "~> 1.19",
       start_permanent: Mix.env() == :prod,
@@ -31,7 +31,7 @@ defmodule XamalProxy.MixProject do
   def application do
     [
       extra_applications: [:logger, :inets, :ssl, :telemetry, :gun, :livery],
-      mod: {XamalProxy.Application, []}
+      mod: {Gatehouse.Application, []}
     ]
   end
 
@@ -84,9 +84,9 @@ defmodule XamalProxy.MixProject do
 
   defp releases do
     [
-      xamal_proxy: [
+      gatehouse: [
         include_executables_for: [:unix],
-        applications: [xamal_proxy: :permanent]
+        applications: [gatehouse: :permanent]
       ]
     ]
   end

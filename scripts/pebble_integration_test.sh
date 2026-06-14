@@ -1,14 +1,14 @@
 #!/usr/bin/env sh
 set -eu
 
-VM_NAME="${XAMAL_PROXY_LIMA_VM:-systemd-test}"
-PROJECT_DIR="${XAMAL_PROXY_PROJECT_DIR:-/Users/dannote/Development/xamal_proxy}"
+VM_NAME="${GATEHOUSE_LIMA_VM:-systemd-test}"
+PROJECT_DIR="${GATEHOUSE_PROJECT_DIR:-/Users/dannote/Development/gatehouse}"
 SYSTEMDKIT_DIR="${SYSTEMDKIT_PROJECT_DIR:-/Users/dannote/Development/systemd}"
-REMOTE_DIR="${XAMAL_PROXY_REMOTE_DIR:-~/xamal-proxy-test-src}"
+REMOTE_DIR="${GATEHOUSE_REMOTE_DIR:-~/gatehouse-test-src}"
 REMOTE_SYSTEMDKIT_DIR="${SYSTEMDKIT_REMOTE_DIR:-~/systemd}"
-PEBBLE_REPO="${XAMAL_PROXY_PEBBLE_REPO:-https://github.com/letsencrypt/pebble.git}"
-PEBBLE_REF="${XAMAL_PROXY_PEBBLE_REF:-v2.10.0}"
-ELIXIR_VERSION="${XAMAL_PROXY_LIMA_ELIXIR:-elixir@1.20.0-otp-27}"
+PEBBLE_REPO="${GATEHOUSE_PEBBLE_REPO:-https://github.com/letsencrypt/pebble.git}"
+PEBBLE_REF="${GATEHOUSE_PEBBLE_REF:-v2.10.0}"
+ELIXIR_VERSION="${GATEHOUSE_LIMA_ELIXIR:-elixir@1.20.0-otp-27}"
 LIMACTL="${LIMACTL:-$HOME/.local/bin/limactl}"
 MISE_ENV='MISE_TRUSTED_CONFIG_PATHS=/Users/dannote/.config/mise/config.toml'
 
@@ -67,11 +67,11 @@ copy_sources
 "$LIMACTL" shell "$VM_NAME" -- sh -lc "
   set -eu
 
-  (cd ~/pebble-src && PEBBLE_VA_ALWAYS_VALID=1 PEBBLE_VA_NOSLEEP=1 ~/bin/pebble -config test/config/pebble-config.json > /tmp/xamal-proxy-pebble.log 2>&1) &
+  (cd ~/pebble-src && PEBBLE_VA_ALWAYS_VALID=1 PEBBLE_VA_NOSLEEP=1 ~/bin/pebble -config test/config/pebble-config.json > /tmp/gatehouse-pebble.log 2>&1) &
   pebble_pid=\$!
   trap 'kill \$pebble_pid 2>/dev/null || true' EXIT INT TERM
 
   cd $REMOTE_DIR
   $MISE_ENV mise x $ELIXIR_VERSION -- mix deps.get >/dev/null
-  $MISE_ENV XAMAL_PROXY_PEBBLE=1 XAMAL_PROXY_PEBBLE_EXTERNAL=1 mise x $ELIXIR_VERSION -- mix test test/xamal_proxy/acme_pebble_integration_test.exs
+  $MISE_ENV GATEHOUSE_PEBBLE=1 GATEHOUSE_PEBBLE_EXTERNAL=1 mise x $ELIXIR_VERSION -- mix test test/gatehouse/acme_pebble_integration_test.exs
 "

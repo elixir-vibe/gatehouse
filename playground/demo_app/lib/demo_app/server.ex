@@ -1,12 +1,12 @@
 defmodule DemoApp.Server do
   @moduledoc """
-  Tiny Livery backend used as a playground target for `xamal_proxy`.
+  Tiny Livery backend used as a playground target for `gatehouse`.
   """
 
   use GenServer
 
-  alias XamalProxy.Livery
-  alias XamalProxy.Livery.{Body, Request, Response, WebSocket}
+  alias Gatehouse.Livery
+  alias Gatehouse.Livery.{Body, Request, Response, WebSocket}
 
   def start_link(opts) do
     name = Keyword.get(opts, :name, __MODULE__)

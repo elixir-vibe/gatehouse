@@ -1,9 +1,9 @@
 # Secure Erlang distribution setup
 
-`xamal_proxy` is controlled with Erlang distribution so Xamal can call:
+`gatehouse` is controlled with Erlang distribution so Xamal can call:
 
 ```elixir
-:rpc.call(:"xamal_proxy@host", XamalProxy.Control, :deploy, [spec], 60_000)
+:rpc.call(:"gatehouse@host", Gatehouse.Control, :deploy, [spec], 60_000)
 ```
 
 Keep distribution private:
@@ -31,8 +31,8 @@ Example local deploy node:
 ```sh
 elixir \
   --sname xamal_deployer \
-  --cookie "$XAMAL_PROXY_COOKIE" \
-  --eval 'IO.inspect(:rpc.call(:"xamal_proxy@127.0.0.1", XamalProxy.Control, :routes, [], 5000))'
+  --cookie "$GATEHOUSE_COOKIE" \
+  --eval 'IO.inspect(:rpc.call(:"gatehouse@127.0.0.1", Gatehouse.Control, :routes, [], 5000))'
 ```
 
 For public or multi-host distribution, add TLS distribution before exposing any

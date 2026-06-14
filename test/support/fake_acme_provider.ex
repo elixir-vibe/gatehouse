@@ -1,9 +1,9 @@
-defmodule XamalProxy.Test.FakeACMEProvider do
+defmodule Gatehouse.Test.FakeACMEProvider do
   @moduledoc false
 
-  @behaviour XamalProxy.ACME.Provider
+  @behaviour Gatehouse.ACME.Provider
 
-  @impl XamalProxy.ACME.Provider
+  @impl Gatehouse.ACME.Provider
   def order_certificate(domains, opts) do
     send(Keyword.fetch!(opts, :test_pid), {:ordered, domains})
 
@@ -15,9 +15,9 @@ defmodule XamalProxy.Test.FakeACMEProvider do
      }}
   end
 
-  @impl XamalProxy.ACME.Provider
+  @impl Gatehouse.ACME.Provider
   def renew_certificate(certificate, _opts), do: {:ok, certificate}
 
-  @impl XamalProxy.ACME.Provider
+  @impl Gatehouse.ACME.Provider
   def revoke_certificate(_certificate, _opts), do: :ok
 end

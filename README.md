@@ -1,4 +1,4 @@
-# XamalProxy
+# Gatehouse
 
 OTP-native edge proxy and blue-green traffic switcher for Xamal deployments.
 
@@ -10,23 +10,23 @@ edge while Xamal orchestrates releases over SSH.
 
 The package is intentionally small and OTP-first:
 
-- `XamalProxy.Application` starts the supervision tree.
-- `XamalProxy.RouteTable` owns a named ETS table for fast host lookups.
-- `XamalProxy.Service` is a `:gen_statem` process per logical service.
-- `XamalProxy.Control` is the distribution-friendly control API.
-- `XamalProxy.Target` models one backend target and request counts.
-- `XamalProxy.HealthCheck` validates targets before activation.
-- `XamalProxy.Store` provides atomic ETF persistence helpers.
-- `XamalProxy.LiveryListener` provides Livery-based HTTP ingress.
-- `XamalProxy.Backend.Gun` performs pooled backend requests and streams request/response bodies through Gun.
-- `XamalProxy.WebSocketProxy` bridges Livery WebSocket upgrades to backend Gun WebSocket sessions.
-- `XamalProxy.ACME.Provider` defines the ACME adapter boundary.
-- `XamalProxy.ACME.RenewalScheduler` persists renewed certs and asks the listener to refresh TLS.
+- `Gatehouse.Application` starts the supervision tree.
+- `Gatehouse.RouteTable` owns a named ETS table for fast host lookups.
+- `Gatehouse.Service` is a `:gen_statem` process per logical service.
+- `Gatehouse.Control` is the distribution-friendly control API.
+- `Gatehouse.Target` models one backend target and request counts.
+- `Gatehouse.HealthCheck` validates targets before activation.
+- `Gatehouse.Store` provides atomic ETF persistence helpers.
+- `Gatehouse.LiveryListener` provides Livery-based HTTP ingress.
+- `Gatehouse.Backend.Gun` performs pooled backend requests and streams request/response bodies through Gun.
+- `Gatehouse.WebSocketProxy` bridges Livery WebSocket upgrades to backend Gun WebSocket sessions.
+- `Gatehouse.ACME.Provider` defines the ACME adapter boundary.
+- `Gatehouse.ACME.RenewalScheduler` persists renewed certs and asks the listener to refresh TLS.
 
 A remote Xamal deployer can call the edge node through Erlang distribution:
 
 ```elixir
-:rpc.call(:"xamal_proxy@host", XamalProxy.Control, :deploy, [spec], 60_000)
+:rpc.call(:"gatehouse@host", Gatehouse.Control, :deploy, [spec], 60_000)
 ```
 
 Example deploy spec:
@@ -49,13 +49,13 @@ Example deploy spec:
 Use a minimal Caddy-like Elixir DSL. There is no root wrapper:
 
 ```elixir
-import XamalProxy.Config
+import Gatehouse.Config
 
-state "/var/lib/xamal-proxy/state.etf"
+state "/var/lib/gatehouse/state.etf"
 http port: 80
 https port: 443,
-  cert: "/etc/xamal-proxy/certs/fallback.crt",
-  key: "/etc/xamal-proxy/certs/fallback.key"
+  cert: "/etc/gatehouse/certs/fallback.crt",
+  key: "/etc/gatehouse/certs/fallback.key"
 
 service :my_app do
   host "example.com"
@@ -74,32 +74,32 @@ end
 Point the release at that file with ordinary application config:
 
 ```elixir
-config :xamal_proxy, config_path: "/etc/xamal-proxy.exs"
+config :gatehouse, config_path: "/etc/gatehouse.exs"
 ```
 
-HTTPS listener cert/key paths are retained; `XamalProxy.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically. When `acme` is configured and any service uses `tls :auto`, the HTTPS listener automatically installs an Erlang/OTP `:ssl` SNI callback backed by the ACME certificate store.
+HTTPS listener cert/key paths are retained; `Gatehouse.LiveryListener.refresh_tls/1` rereads them and restarts the Livery service. Successful ACME renewals call this automatically. When `acme` is configured and any service uses `tls :auto`, the HTTPS listener automatically installs an Erlang/OTP `:ssl` SNI callback backed by the ACME certificate store.
 
 Set `:persistence_path` to restore saved service state on boot and persist after
 deploys:
 
 ```elixir
-config :xamal_proxy, persistence_path: "/var/lib/xamal-proxy/state.etf"
+config :gatehouse, persistence_path: "/var/lib/gatehouse/state.etf"
 ```
 
 ## ACME
 
-`XamalProxy.ACME.Provider.ExAcme` is the primary Elixir ACME adapter. It uses
+`Gatehouse.ACME.Provider.ExAcme` is the primary Elixir ACME adapter. It uses
 `ex_acme` for account registration, HTTP-01 authorization, CSR finalization,
 certificate fetch, and revocation. HTTP-01 tokens are published through
-`XamalProxy.ACME.ChallengeStore`, which the Livery handler serves before proxy
+`Gatehouse.ACME.ChallengeStore`, which the Livery handler serves before proxy
 routing.
 
 Static config now turns `tls :auto` services into renewal jobs automatically:
 
 ```elixir
 acme email: "ops@example.com",
-  cert_directory: "/var/lib/xamal-proxy/certs",
-  account_directory: "/var/lib/xamal-proxy/acme"
+  cert_directory: "/var/lib/gatehouse/certs",
+  account_directory: "/var/lib/gatehouse/acme"
 
 service :my_app do
   host "example.com"
@@ -125,7 +125,7 @@ Like `systemdkit`, the script copies the project into the Lima VM named
 `PEBBLE_VA_ALWAYS_VALID=1`, and runs:
 
 ```sh
-XAMAL_PROXY_PEBBLE=1 XAMAL_PROXY_PEBBLE_EXTERNAL=1 mix test test/xamal_proxy/acme_pebble_integration_test.exs
+GATEHOUSE_PEBBLE=1 GATEHOUSE_PEBBLE_EXTERNAL=1 mix test test/gatehouse/acme_pebble_integration_test.exs
 ```
 
 ## Development
@@ -133,7 +133,7 @@ XAMAL_PROXY_PEBBLE=1 XAMAL_PROXY_PEBBLE_EXTERNAL=1 mix test test/xamal_proxy/acm
 This project was created with Igniter and VibeKit:
 
 ```sh
-mix igniter.new xamal_proxy --sup --install vibe_kit --yes
+mix igniter.new gatehouse --sup --install vibe_kit --yes
 ```
 
 Run checks with:
@@ -146,6 +146,6 @@ mix ci
 
 1. Add richer telemetry dashboards/examples.
 2. Add TLS listener wiring and certificate store.
-3. Implement a real ACME provider adapter behind `XamalProxy.ACME.Provider`.
+3. Implement a real ACME provider adapter behind `Gatehouse.ACME.Provider`.
 4. Add load-balancing policies beyond one active target.
 5. Add full multi-target runtime load balancing beyond the config shape.

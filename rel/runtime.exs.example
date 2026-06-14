@@ -1,5 +1,5 @@
 import Config
 
-config :xamal_proxy,
-  config_path: System.get_env("XAMAL_PROXY_CONFIG", "/etc/xamal-proxy.exs"),
-  persistence_path: System.get_env("XAMAL_PROXY_STATE", "/var/lib/xamal-proxy/state.etf")
+config :gatehouse,
+  config_path: System.get_env("GATEHOUSE_CONFIG", "/etc/gatehouse.exs"),
+  persistence_path: System.get_env("GATEHOUSE_STATE", "/var/lib/gatehouse/state.etf")

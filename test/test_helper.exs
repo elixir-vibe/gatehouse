@@ -1,10 +1,10 @@
 excluded = []
 
 excluded =
-  if System.get_env("XAMAL_PROXY_PEBBLE") == "1", do: excluded, else: [:pebble | excluded]
+  if System.get_env("GATEHOUSE_PEBBLE") == "1", do: excluded, else: [:pebble | excluded]
 
 excluded =
-  if System.get_env("XAMAL_PROXY_INTEGRATION") == "1",
+  if System.get_env("GATEHOUSE_INTEGRATION") == "1",
     do: excluded,
     else: [:integration | excluded]
 

@@ -1,6 +1,6 @@
 # Telemetry events
 
-`xamal_proxy` emits events under the `[:xamal_proxy]` prefix.
+`gatehouse` emits events under the `[:gatehouse]` prefix.
 
 ## Quick attach example
 
@@ -11,13 +11,13 @@ handler = fn event, measurements, metadata, _config ->
 end
 
 :telemetry.attach_many(
-  "xamal-proxy-logger",
+  "gatehouse-logger",
   [
-    [:xamal_proxy, :deploy, :stop],
-    [:xamal_proxy, :health_check, :stop],
-    [:xamal_proxy, :proxy, :request, :stop],
-    [:xamal_proxy, :drain, :stop],
-    [:xamal_proxy, :acme, :renewal, :stop]
+    [:gatehouse, :deploy, :stop],
+    [:gatehouse, :health_check, :stop],
+    [:gatehouse, :proxy, :request, :stop],
+    [:gatehouse, :drain, :stop],
+    [:gatehouse, :acme, :renewal, :stop]
   ],
   handler,
   nil
@@ -40,7 +40,7 @@ Useful first panels:
 ## Deploy
 
 ```elixir
-[:xamal_proxy, :deploy, :stop]
+[:gatehouse, :deploy, :stop]
 ```
 
 Measurements:
@@ -55,7 +55,7 @@ Metadata:
 ## Health checks
 
 ```elixir
-[:xamal_proxy, :health_check, :stop]
+[:gatehouse, :health_check, :stop]
 ```
 
 Measurements:
@@ -71,7 +71,7 @@ Metadata:
 ## Drains
 
 ```elixir
-[:xamal_proxy, :drain, :stop]
+[:gatehouse, :drain, :stop]
 ```
 
 Metadata:
@@ -82,10 +82,10 @@ Metadata:
 ## Backend connection pool
 
 ```elixir
-[:xamal_proxy, :backend, :pool, :open]
-[:xamal_proxy, :backend, :pool, :invalidate]
-[:xamal_proxy, :backend, :pool, :reap]
-[:xamal_proxy, :backend, :pool, :evict]
+[:gatehouse, :backend, :pool, :open]
+[:gatehouse, :backend, :pool, :invalidate]
+[:gatehouse, :backend, :pool, :reap]
+[:gatehouse, :backend, :pool, :evict]
 ```
 
 Metadata:
@@ -95,8 +95,8 @@ Metadata:
 ## ACME renewals
 
 ```elixir
-[:xamal_proxy, :acme, :renewal, :tick]
-[:xamal_proxy, :acme, :renewal, :stop]
+[:gatehouse, :acme, :renewal, :tick]
+[:gatehouse, :acme, :renewal, :stop]
 ```
 
 Stop metadata:
@@ -109,7 +109,7 @@ A successful renewal persists the certificate and refreshes the Livery TLS liste
 ## Proxy requests
 
 ```elixir
-[:xamal_proxy, :proxy, :request, :stop]
+[:gatehouse, :proxy, :request, :stop]
 ```
 
 Measurements:

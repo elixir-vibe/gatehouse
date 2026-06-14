@@ -1,8 +1,8 @@
-defmodule XamalProxy.SafeRPCHTTPTest do
+defmodule Gatehouse.SafeRPCHTTPTest do
   use ExUnit.Case, async: false
 
   alias SafeRPC.Adapter.HTTP.{Request, Response}
-  alias XamalProxy.SafeRPC.HTTP
+  alias Gatehouse.SafeRPC.HTTP
 
   defmodule HTTPService do
     @behaviour SafeRPC.Adapter.Service
@@ -61,8 +61,8 @@ defmodule XamalProxy.SafeRPCHTTPTest do
     socket = socket_path("config")
 
     config =
-      XamalProxy.Config.eval!("""
-      import XamalProxy.Config
+      Gatehouse.Config.eval!("""
+      import Gatehouse.Config
 
       service :safe_app do
         host "safe.example.com"
@@ -70,9 +70,9 @@ defmodule XamalProxy.SafeRPCHTTPTest do
       end
       """)
 
-    assert :ok = XamalProxy.Control.apply_config(config)
-    assert {:ok, "safe_app", "main"} = XamalProxy.RouteTable.lookup("safe.example.com")
-    assert {:ok, state} = XamalProxy.Control.get_service("safe_app")
+    assert :ok = Gatehouse.Control.apply_config(config)
+    assert {:ok, "safe_app", "main"} = Gatehouse.RouteTable.lookup("safe.example.com")
+    assert {:ok, state} = Gatehouse.Control.get_service("safe_app")
     assert state.active_target.kind == :safe_rpc
     assert state.active_target.socket == socket
     assert state.active_target.shards == 2
@@ -83,8 +83,8 @@ defmodule XamalProxy.SafeRPCHTTPTest do
     {:ok, server} = HTTPServer.start_link(socket: socket)
 
     config =
-      XamalProxy.Config.eval!("""
-      import XamalProxy.Config
+      Gatehouse.Config.eval!("""
+      import Gatehouse.Config
 
       service :safe_forward do
         host "forward.example.com"
@@ -92,7 +92,7 @@ defmodule XamalProxy.SafeRPCHTTPTest do
       end
       """)
 
-    assert :ok = XamalProxy.Control.apply_config(config)
+    assert :ok = Gatehouse.Control.apply_config(config)
 
     request =
       :livery_req.new(%{
@@ -105,10 +105,10 @@ defmodule XamalProxy.SafeRPCHTTPTest do
         body: :empty
       })
 
-    response = XamalProxy.LiveryHandler.handle(request)
+    response = Gatehouse.LiveryHandler.handle(request)
 
-    assert XamalProxy.Livery.Response.status(response) == 200
-    assert XamalProxy.Livery.Response.body(response) == {:full, "safe rpc /hello"}
+    assert Gatehouse.Livery.Response.status(response) == 200
+    assert Gatehouse.Livery.Response.body(response) == {:full, "safe rpc /hello"}
 
     GenServer.stop(server)
   end
@@ -119,8 +119,8 @@ defmodule XamalProxy.SafeRPCHTTPTest do
     {:ok, server} = PlugRPCServer.start_link(socket: socket)
 
     config =
-      XamalProxy.Config.eval!("""
-      import XamalProxy.Config
+      Gatehouse.Config.eval!("""
+      import Gatehouse.Config
 
       service :plug_forward do
         host "plug-forward.example.com"
@@ -128,7 +128,7 @@ defmodule XamalProxy.SafeRPCHTTPTest do
       end
       """)
 
-    assert :ok = XamalProxy.Control.apply_config(config)
+    assert :ok = Gatehouse.Control.apply_config(config)
 
     request =
       :livery_req.new(%{
@@ -141,11 +141,11 @@ defmodule XamalProxy.SafeRPCHTTPTest do
         body: :empty
       })
 
-    response = XamalProxy.LiveryHandler.handle(request)
+    response = Gatehouse.LiveryHandler.handle(request)
 
-    assert XamalProxy.Livery.Response.status(response) == 200
+    assert Gatehouse.Livery.Response.status(response) == 200
 
-    assert XamalProxy.Livery.Response.body(response) ==
+    assert Gatehouse.Livery.Response.body(response) ==
              {:full, "hello from plug plug-forward.example.com"}
 
     GenServer.stop(server)
@@ -159,8 +159,8 @@ defmodule XamalProxy.SafeRPCHTTPTest do
         body: {:full, "created"}
       })
 
-    assert XamalProxy.Livery.Response.status(response) == 201
-    assert XamalProxy.Livery.Response.body(response) == {:full, "created"}
+    assert Gatehouse.Livery.Response.status(response) == 201
+    assert Gatehouse.Livery.Response.body(response) == {:full, "created"}
   end
 
   defp socket_path(name) do
