@@ -55,6 +55,10 @@ defmodule Gatehouse.LiveryHandler do
     request
     |> Request.host()
     |> RouteTable.lookup()
+    |> case do
+      :error -> {:error, :not_found}
+      route -> route
+    end
   end
 
   defp forward_target(request, %{kind: :safe_rpc} = target) do
@@ -73,7 +77,7 @@ defmodule Gatehouse.LiveryHandler do
       WebSocket.upgrade(request, Gatehouse.WebSocketProxy, %{
         target_url: target_url,
         path: path_with_query(request),
-        headers: outbound_headers(Request.headers(request))
+        headers: websocket_outbound_headers(Request.headers(request))
       })
     end
   end
@@ -89,7 +93,7 @@ defmodule Gatehouse.LiveryHandler do
     method = Request.method(request)
     path = path_with_query(request)
     headers = outbound_headers(Request.headers(request))
-    body = request_body(Request.body(request))
+    body = request_body(method, headers, Request.body(request))
 
     case Gun.stream(target_url, method, path, headers, body) do
       {:ok, {:full, response}} ->
@@ -138,14 +142,34 @@ defmodule Gatehouse.LiveryHandler do
 
   defp route_key(request), do: {Request.host(request), Request.path(request)}
 
-  defp request_body(:empty), do: <<>>
-  defp request_body({:buffered, body}), do: body
-  defp request_body({:stream, reader}), do: {:stream, reader}
+  defp request_body(_method, _headers, :empty), do: <<>>
+  defp request_body(_method, _headers, {:buffered, body}), do: body
+
+  defp request_body(method, headers, {:stream, reader}) do
+    if bodyless_request?(method, headers), do: <<>>, else: {:stream, reader}
+  end
+
+  defp bodyless_request?(method, headers) when method in [<<"GET">>, <<"HEAD">>] do
+    not has_header?(headers, <<"content-length">>) and
+      not has_header?(headers, <<"transfer-encoding">>)
+  end
+
+  defp bodyless_request?(_method, _headers), do: false
+
+  defp has_header?(headers, wanted) do
+    Enum.any?(headers, fn {name, _value} -> String.downcase(to_string(name)) == wanted end)
+  end
 
   defp outbound_headers(headers) do
     headers
     |> Enum.reject(fn {name, _value} -> hop_by_hop?(name) end)
     |> Enum.map(fn {name, value} -> {to_binary(name), to_binary(value)} end)
+  end
+
+  defp websocket_outbound_headers(headers) do
+    headers
+    |> outbound_headers()
+    |> Enum.reject(fn {name, _value} -> websocket_handshake_header?(name) end)
   end
 
   defp response_headers(headers) do
@@ -156,6 +180,10 @@ defmodule Gatehouse.LiveryHandler do
 
   defp hop_by_hop?(name) do
     Enum.member?(@hop_by_hop_headers, String.downcase(to_string(name)))
+  end
+
+  defp websocket_handshake_header?(name) do
+    String.starts_with?(String.downcase(to_string(name)), "sec-websocket-")
   end
 
   defp emit_request_telemetry(start, service, target_id, response, metadata \\ %{}) do

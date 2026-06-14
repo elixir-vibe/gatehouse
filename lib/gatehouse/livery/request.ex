@@ -25,12 +25,22 @@ defmodule Gatehouse.Livery.Request do
   @spec header(t(), binary(), binary()) :: binary()
   def header(request, name, default \\ <<>>), do: :livery_req.header(name, request, default)
 
+  @spec authority(t()) :: binary()
+  def authority(request), do: :livery_req.authority(request)
+
   @spec host(t()) :: String.t()
   def host(request) do
     request
-    |> header(<<"host">>, <<>>)
+    |> authority_or_host()
     |> to_string()
     |> String.split(":", parts: 2)
     |> hd()
+  end
+
+  defp authority_or_host(request) do
+    case authority(request) do
+      <<>> -> header(request, <<"host">>, <<>>)
+      authority -> authority
+    end
   end
 end
