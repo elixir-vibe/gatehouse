@@ -16,6 +16,8 @@ end
     [:gatehouse, :deploy, :stop],
     [:gatehouse, :health_check, :stop],
     [:gatehouse, :proxy, :request, :stop],
+    [:gatehouse, :safe_rpc, :pool, :checkout, :stop],
+    [:gatehouse, :safe_rpc, :request, :stop],
     [:gatehouse, :drain, :stop],
     [:gatehouse, :acme, :renewal, :stop]
   ],
@@ -34,6 +36,8 @@ Useful first panels:
 - deploy duration and result grouped by `metadata.service`
 - health-check failures grouped by `metadata.url`
 - backend pool opens/reaps/evictions grouped by `metadata.key`
+- SafeRPC request latency grouped by `metadata.socket`, `metadata.service`, and `metadata.target_id`
+- SafeRPC pool checkout latency/error count grouped by `metadata.socket`
 - active drain count from drain start/stop events once drain start is added
 - ACME renewal outcomes grouped by certificate `metadata.name`
 
@@ -79,6 +83,46 @@ Metadata:
 - `:service`
 - `:target_id`
 
+## SafeRPC pool checkouts
+
+```elixir
+[:gatehouse, :safe_rpc, :pool, :checkout, :stop]
+```
+
+Measurements:
+
+- `:duration`
+
+Metadata:
+
+- `:service`
+- `:target_id`
+- `:socket`
+- `:shards`
+- `:result` — `:ok` or `{:error, reason}`
+
+## SafeRPC requests
+
+```elixir
+[:gatehouse, :safe_rpc, :request, :stop]
+```
+
+Measurements:
+
+- `:duration`
+
+Metadata:
+
+- `:service`
+- `:target_id`
+- `:socket`
+- `:op`
+- `:status`
+- `:result` — `:ok` or `{:error, reason}`
+
+Use these events with `[:gatehouse, :proxy, :request, :stop]` during stress tests
+to compare end-to-end proxy latency with SafeRPC upstream latency.
+
 ## Backend connection pool
 
 ```elixir
@@ -105,6 +149,19 @@ Stop metadata:
 - `:result` — `:ok`, `{:skip, :not_due}`, or `{:error, reason}`
 
 A successful renewal persists the certificate and refreshes the Livery TLS listener.
+
+## Livery metrics
+
+Livery does not emit Elixir `:telemetry` events. It provides its own
+`instrument`-based middleware and Prometheus exporter:
+
+- `livery_instrument_metrics`
+- `livery_metrics`
+
+Those can expose lower-level HTTP server metrics such as
+`http.server.active_requests` and `http.server.request.duration`. Gatehouse's own
+`:telemetry` events remain the application-level observability source for route,
+target, deploy, SafeRPC, and proxy behavior.
 
 ## Proxy requests
 

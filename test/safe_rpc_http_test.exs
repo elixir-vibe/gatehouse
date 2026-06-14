@@ -113,6 +113,79 @@ defmodule Gatehouse.SafeRPCHTTPTest do
     GenServer.stop(server)
   end
 
+  test "emits SafeRPC telemetry when forwarding requests" do
+    test_pid = self()
+    ref = make_ref()
+    handler_id = "gatehouse-safe-rpc-telemetry"
+    socket = socket_path("telemetry")
+
+    :telemetry.detach(handler_id)
+    {:ok, server} = HTTPServer.start_link(socket: socket)
+
+    :telemetry.attach_many(
+      handler_id,
+      [
+        [:gatehouse, :safe_rpc, :pool, :checkout, :stop],
+        [:gatehouse, :safe_rpc, :request, :stop]
+      ],
+      &__MODULE__.handle_event/4,
+      {test_pid, ref}
+    )
+
+    config =
+      Gatehouse.Config.eval!("""
+      import Gatehouse.Config
+
+      service :safe_telemetry do
+        host "safe-telemetry.example.com"
+        target :main, safe_rpc: [socket: #{inspect(socket)}, shards: 2], active: true
+      end
+      """)
+
+    assert :ok = Gatehouse.Control.apply_config(config)
+
+    request =
+      :livery_req.new(%{
+        method: "GET",
+        scheme: "https",
+        authority: "safe-telemetry.example.com",
+        path: "/hello",
+        raw_query: "",
+        headers: [{"host", "safe-telemetry.example.com"}],
+        body: :empty
+      })
+
+    response = Gatehouse.LiveryHandler.handle(request)
+
+    assert Gatehouse.Livery.Response.status(response) == 200
+
+    assert_receive {^ref, [:gatehouse, :safe_rpc, :pool, :checkout, :stop], %{duration: duration},
+                    pool_metadata}
+
+    assert is_integer(duration)
+    assert pool_metadata.service == "safe_telemetry"
+    assert pool_metadata.target_id == "main"
+    assert pool_metadata.socket == socket
+    assert pool_metadata.shards == 2
+    assert pool_metadata.result == :ok
+
+    assert_receive {^ref, [:gatehouse, :safe_rpc, :request, :stop], %{duration: duration},
+                    request_metadata}
+
+    assert is_integer(duration)
+    assert request_metadata.service == "safe_telemetry"
+    assert request_metadata.target_id == "main"
+    assert request_metadata.socket == socket
+    assert request_metadata.op == :http_request
+    assert request_metadata.status == 200
+    assert request_metadata.result == :ok
+
+    :telemetry.detach(handler_id)
+    GenServer.stop(server)
+  after
+    :telemetry.detach("gatehouse-safe-rpc-telemetry")
+  end
+
   @tag :integration
   test "forwards livery requests through SafeRPC Plug adapters" do
     socket = socket_path("plug")
@@ -161,6 +234,10 @@ defmodule Gatehouse.SafeRPCHTTPTest do
 
     assert Gatehouse.Livery.Response.status(response) == 201
     assert Gatehouse.Livery.Response.body(response) == {:full, "created"}
+  end
+
+  def handle_event(event, measurements, metadata, {test_pid, ref}) do
+    send(test_pid, {ref, event, measurements, metadata})
   end
 
   defp socket_path(name) do

@@ -20,7 +20,7 @@ defmodule Gatehouse.LiveryHandler do
     with :proxy <- maybe_http01_challenge(request),
          {:ok, service, target_id} <- route(request),
          {:ok, target} <- Control.checkout(service, target_id) do
-      response = forward_target(request, target)
+      response = forward_target(request, target, service, target_id)
       emit_request_telemetry(start, service, target_id, response)
       finalize_response(response, service, target_id)
     else
@@ -61,14 +61,22 @@ defmodule Gatehouse.LiveryHandler do
     end
   end
 
-  defp forward_target(request, %{kind: :safe_rpc} = target) do
-    case SafeRPC.Pool.checkout(target.socket, shards: target.shards) do
-      {:ok, pool} -> SafeRPC.Forwarder.forward(request, pool, route_key(request), op: target.op)
-      {:error, reason} -> Response.text(502, "bad gateway: #{inspect(reason)}")
+  defp forward_target(request, %{kind: :safe_rpc} = target, service, target_id) do
+    case checkout_safe_rpc_pool(target, service, target_id) do
+      {:ok, pool} ->
+        SafeRPC.Forwarder.forward(request, pool, route_key(request),
+          op: target.op,
+          service: service,
+          target_id: target_id,
+          socket: target.socket
+        )
+
+      {:error, reason} ->
+        Response.text(502, "bad gateway: #{inspect(reason)}")
     end
   end
 
-  defp forward_target(request, %{kind: :http, url: url}) do
+  defp forward_target(request, %{kind: :http, url: url}, _service, _target_id) do
     maybe_upgrade_websocket(request, url) || forward(request, url)
   end
 
@@ -139,6 +147,28 @@ defmodule Gatehouse.LiveryHandler do
       query -> [path, ??, query] |> IO.iodata_to_binary()
     end
   end
+
+  defp checkout_safe_rpc_pool(target, service, target_id) do
+    start = System.monotonic_time()
+    result = SafeRPC.Pool.checkout(target.socket, shards: target.shards)
+
+    Telemetry.execute(
+      [:safe_rpc, :pool, :checkout, :stop],
+      %{duration: System.monotonic_time() - start},
+      %{
+        service: service,
+        target_id: target_id,
+        socket: target.socket,
+        shards: target.shards,
+        result: checkout_result(result)
+      }
+    )
+
+    result
+  end
+
+  defp checkout_result({:ok, _pool}), do: :ok
+  defp checkout_result({:error, reason}), do: {:error, reason}
 
   defp route_key(request), do: {Request.host(request), Request.path(request)}
 
