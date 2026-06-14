@@ -14,6 +14,8 @@ defmodule GatehouseTest do
     assert state.status == :serving
     assert state.active_target.id == "green"
     assert {:ok, "app", "green"} = Gatehouse.RouteTable.lookup("example.com")
+    assert {:ok, "app", "green", target} = Gatehouse.RouteTable.lookup_target("example.com")
+    assert target.id == "green"
   end
 
   test "a second deploy keeps the old target for future draining" do

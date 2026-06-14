@@ -90,7 +90,7 @@ defmodule Gatehouse.Service do
             status: :serving
         }
 
-        Enum.each(hosts, &RouteTable.put(&1, state.id, target.id))
+        Enum.each(hosts, &RouteTable.put(&1, state.id, target.id, target))
 
         schedule_drains(old_targets)
         {:next_state, :serving, next_state, [{:reply, from, {:ok, next_state}}]}
@@ -115,7 +115,16 @@ defmodule Gatehouse.Service do
             status: :serving
         }
 
-        Enum.each(hosts, &RouteTable.put(&1, state.id, route_target_id))
+        Enum.each(
+          hosts,
+          &RouteTable.put(
+            &1,
+            state.id,
+            route_target_id,
+            route_target_data(route_target_id, targets)
+          )
+        )
+
         {:next_state, :serving, next_state, [{:reply, from, {:ok, next_state}}]}
 
       {:error, reason} ->
@@ -175,6 +184,9 @@ defmodule Gatehouse.Service do
 
   defp route_target_id(:round_robin, [_first, _second | _rest]), do: :select
   defp route_target_id(_balance, [target | _rest]), do: target.id
+
+  defp route_target_data(:select, targets), do: List.to_tuple(targets)
+  defp route_target_data(_target_id, [target | _rest]), do: target
 
   defp build_targets(target_specs) do
     target_specs

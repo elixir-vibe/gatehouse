@@ -18,8 +18,7 @@ defmodule Gatehouse.LiveryHandler do
     start = System.monotonic_time()
 
     with :proxy <- maybe_http01_challenge(request),
-         {:ok, service, target_id} <- route(request),
-         {:ok, target} <- Control.checkout(service, target_id) do
+         {:ok, service, target_id, target} <- route(request) do
       response = forward_target(request, target, service, target_id)
       emit_request_telemetry(start, service, target_id, response)
       finalize_response(response, service, target_id)
@@ -54,9 +53,10 @@ defmodule Gatehouse.LiveryHandler do
   defp route(request) do
     request
     |> Request.host()
-    |> RouteTable.lookup()
+    |> RouteTable.lookup_target()
     |> case do
       :error -> {:error, :not_found}
+      {:ok, _service, _target_id, nil} -> {:error, :target_unavailable}
       route -> route
     end
   end
@@ -127,7 +127,6 @@ defmodule Gatehouse.LiveryHandler do
         Response.with_body({:sse, checkin_producer(producer, service, target_id)}, response)
 
       _body ->
-        Control.checkin(service, target_id)
         response
     end
   end

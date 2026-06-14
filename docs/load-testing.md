@@ -192,10 +192,11 @@ A small `:eprof` pass using `bombardier` showed current hotspots are mostly in
 network I/O and HTTP parsing rather than Gatehouse business logic:
 
 - HTTP proxy: `erts_internal:port_command/3`, H1 header lowercasing/parsing,
-  `binary:match/2`, and `String.downcase/3`. An earlier profile also showed
-  per-checkout connection-pool liveness scans; the backend pool now keeps a
-  tuple-backed round-robin pool and removes dead connections from `:gun_down` /
-  sweep events instead of scanning on every checkout.
+  `binary:match/2`, and `String.downcase/3`. Earlier profiles also showed
+  per-checkout connection-pool liveness scans and service checkout calls; the
+  backend pool now keeps a tuple-backed round-robin pool and route ETS entries
+  carry active target snapshots so ordinary requests avoid service-process
+  checkout/checkin coordination.
 - SafeRPC proxy: `erts_internal:port_control/3`, `port_command/3`,
   `gen:do_call/4`, telemetry sample collection, H1 parsing, and ETF
   encode/decode.

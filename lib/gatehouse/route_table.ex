@@ -20,7 +20,12 @@ defmodule Gatehouse.RouteTable do
 
   @spec put(host(), service_id(), target_id()) :: :ok
   def put(host, service_id, target_id) do
-    GenServer.call(__MODULE__, {:put, host, service_id, target_id})
+    put(host, service_id, target_id, nil)
+  end
+
+  @spec put(host(), service_id(), target_id(), term()) :: :ok
+  def put(host, service_id, target_id, target_data) do
+    GenServer.call(__MODULE__, {:put, host, service_id, target_id, target_data})
   end
 
   @spec delete(host()) :: :ok
@@ -31,8 +36,31 @@ defmodule Gatehouse.RouteTable do
   @spec lookup(host()) :: {:ok, service_id(), target_id()} | :error
   def lookup(host) do
     case :ets.lookup(@table, normalize_host(host)) do
-      [{_host, service_id, target_id}] -> {:ok, service_id, target_id}
+      [{_host, service_id, target_id, _target_data, _cursor}] -> {:ok, service_id, target_id}
       [] -> :error
+    end
+  end
+
+  @spec lookup_target(host()) :: {:ok, service_id(), target_id(), term()} | :error
+  def lookup_target(host) do
+    key = normalize_host(host)
+
+    case :ets.lookup(@table, key) do
+      [{_host, service_id, :select, targets, cursor}]
+      when is_tuple(targets) and tuple_size(targets) > 0 ->
+        index = rem(cursor, tuple_size(targets))
+        :ets.update_counter(@table, key, {5, 1})
+        target = elem(targets, index)
+        {:ok, service_id, target.id, target}
+
+      [{_host, service_id, target_id, target, _cursor}] when not is_nil(target) ->
+        {:ok, service_id, target_id, target}
+
+      [{_host, service_id, target_id, _target_data, _cursor}] ->
+        {:ok, service_id, target_id, nil}
+
+      [] ->
+        :error
     end
   end
 
@@ -40,6 +68,9 @@ defmodule Gatehouse.RouteTable do
   def all do
     @table
     |> :ets.tab2list()
+    |> Enum.map(fn {host, service_id, target_id, _target_data, _cursor} ->
+      {host, service_id, target_id}
+    end)
     |> Enum.sort()
   end
 
@@ -50,8 +81,8 @@ defmodule Gatehouse.RouteTable do
   end
 
   @impl GenServer
-  def handle_call({:put, host, service_id, target_id}, _from, state) do
-    true = :ets.insert(@table, {normalize_host(host), service_id, target_id})
+  def handle_call({:put, host, service_id, target_id, target_data}, _from, state) do
+    true = :ets.insert(@table, {normalize_host(host), service_id, target_id, target_data, 0})
     {:reply, :ok, state}
   end
 
