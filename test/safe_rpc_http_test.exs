@@ -1,8 +1,8 @@
 defmodule Gatehouse.SafeRPCHTTPTest do
   use ExUnit.Case, async: false
 
-  alias SafeRPC.Adapter.HTTP.{Request, Response}
   alias Gatehouse.SafeRPC.HTTP
+  alias SafeRPC.Adapter.HTTP.{Request, Response}
 
   defmodule HTTPService do
     @behaviour SafeRPC.Adapter.Service

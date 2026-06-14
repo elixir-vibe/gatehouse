@@ -1,8 +1,8 @@
 defmodule Gatehouse.SafeRPC.HTTP do
   @moduledoc "Converts between Livery HTTP terms and SafeRPC HTTP envelopes."
 
-  alias SafeRPC.Adapter.HTTP.{Request, Response}
   alias Gatehouse.Livery
+  alias SafeRPC.Adapter.HTTP.{Request, Response}
 
   @spec from_livery(term(), keyword()) :: term()
   def from_livery(request, opts \\ []) do
