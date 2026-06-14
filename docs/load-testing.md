@@ -158,18 +158,19 @@ Environment:
 
 | Scenario | Driver | Requests | Concurrency | Result | Throughput | Proxy p50 | Proxy p95 | Proxy p99 | Retained total | Retained processes |
 | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `direct_http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~121.1k req/s | n/a | n/a | n/a | +2.90MiB | +0 |
-| `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~13.4k req/s | 8.66ms | 18.72ms | 29.85ms | +0.84MiB | +37 |
-| `http_baseline` before per-origin pooling | bombardier | 100,000 | 200 | 100% 2xx | ~18.3k req/s | 10.32ms | 12.54ms | 13.67ms | +1.99MiB | +41 |
-| `http_baseline` after per-origin pooling | bombardier | 100,000 | 200 | 100% 2xx | ~28.2k req/s | 0.57ms | 4.82ms | 10.44ms | +5.47MiB | +134 |
-| `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.83ms | 7.84ms | 33.20ms | +6.83MiB | +38 |
+| `direct_http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~108.3k req/s | n/a | n/a | n/a | +2.53MiB | +0 |
+| `http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~28.0k req/s | 0.21ms | 1.55ms | 4.28ms | +7.01MiB | +134 |
+| `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~12.3k req/s | 8.88ms | 20.69ms | 29.49ms | +0.67MiB | +37 |
+| `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.96ms | 9.28ms | 42.56ms | +6.49MiB | +38 |
+| `safe_rpc_restart` | builtin | 10,000 | 100 | 6,718 2xx / 3,282 502 | n/a | 0.27ms | 2.55ms | 6.40ms | +3.48MiB | +39 |
 
-The direct HTTP baseline shows the local Livery backend can serve about 121k
-req/s on this machine. Gatehouse HTTP proxying was therefore about 15% of direct
-backend throughput before per-origin pooling and about 23% after adding a bounded
-per-origin upstream connection pool (`:backend_max_connections_per_origin`,
-default 32). That is a meaningful improvement, but still leaves HTTP proxy
-performance as an optimization area.
+The direct HTTP baseline shows the local Livery backend can serve about 108k
+req/s on this machine. Gatehouse HTTP proxying is about 26% of direct backend
+throughput after adding a bounded per-origin upstream connection pool
+(`:backend_max_connections_per_origin`, default 32) and caching active target
+snapshots in the ETS route table. That is a meaningful improvement over the
+initial ~18k req/s baseline, but HTTP proxy performance remains an optimization
+area.
 
 `safe_rpc_restart` initially appeared to retain about +201MiB and +141
 processes. `--process-diagnostics` showed those retained processes were mostly
@@ -178,11 +179,11 @@ not Gatehouse/SafeRPC server processes. The built-in HTTP client now uses
 `:httpc` with `connection: close` so restart leak checks measure the proxy more
 cleanly.
 
-A follow-up 10,000 request / 100 concurrency restart run recovered correctly:
+The latest 10,000 request / 100 concurrency restart run recovered correctly:
 
-- responses: 6,710 successful, 3,290 expected `502 bad gateway` during outage
-- proxy p99: 13.80ms
-- retained total memory: about +5.39MiB
+- responses: 6,718 successful, 3,282 expected `502 bad gateway` during outage
+- proxy p99: 6.40ms
+- retained total memory: about +3.48MiB
 - retained process count: +39
 
 The remaining retained processes are the Gatehouse/Livery listener and acceptor
@@ -203,9 +204,8 @@ network I/O and HTTP parsing rather than Gatehouse business logic:
 
 ## Stress cases to add next
 
-1. Investigate retained memory/process growth in `safe_rpc_restart`.
-2. Long-lived WebSocket connection churn and mixed message sizes.
-3. Streaming and slow-response backends.
-4. Soak tests with process/memory leak assertions.
-5. Livery `instrument` metrics exporter wiring for lower-level HTTP server
+1. Long-lived WebSocket connection churn and mixed message sizes.
+2. Streaming and slow-response backends.
+3. Soak tests with process/memory leak assertions.
+4. Livery `instrument` metrics exporter wiring for lower-level HTTP server
    metrics.
