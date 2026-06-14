@@ -169,6 +169,21 @@ defmodule Gatehouse.LoadTest.VMSampler do
   end
 end
 
+defmodule Gatehouse.LoadTest.WebSocketEchoHandler do
+  @behaviour :ws_handler
+
+  def init(_request, _opts), do: {:ok, nil}
+
+  def handle_in({:text, data}, state), do: {:reply, [{:text, data}], state}
+  def handle_in({:binary, data}, state), do: {:reply, [{:binary, data}], state}
+  def handle_in({:ping, data}, state), do: {:reply, [{:pong, data}], state}
+  def handle_in({:close, code, _reason}, state), do: {:stop, {:peer_closed, code}, state}
+  def handle_in(_frame, state), do: {:ok, state}
+
+  def handle_info(_message, state), do: {:ok, state}
+  def terminate(_reason, _state), do: :ok
+end
+
 defmodule Gatehouse.LoadTest.HTTPBackend do
   alias Gatehouse.Livery
   alias Gatehouse.Livery.{Request, Response}
@@ -188,8 +203,39 @@ defmodule Gatehouse.LoadTest.HTTPBackend do
   def stop(%{service: service}), do: Livery.stop_service(service)
 end
 
+defmodule Gatehouse.LoadTest.WebSocketBackend do
+  alias Gatehouse.Livery
+  alias Gatehouse.Livery.{Request, Response, WebSocket}
+
+  def start_link(label) do
+    handler = fn request ->
+      case Request.path(request) do
+        "/ws" -> WebSocket.upgrade(request, Gatehouse.LoadTest.WebSocketEchoHandler, %{})
+        "/up" -> Response.text(200, "ok")
+        _path -> Response.text(200, "#{label} #{Request.path(request)}")
+      end
+    end
+
+    with {:ok, service} <-
+           Livery.start_service(%{
+             http: %{ip: {127, 0, 0, 1}, port: 0},
+             handler: handler
+           }) do
+      {:ok, %{service: service, port: Livery.listeners(service).h1}}
+    end
+  end
+
+  def stop(%{service: service}), do: Livery.stop_service(service)
+end
+
 defmodule Gatehouse.LoadTest do
-  alias Gatehouse.LoadTest.{HTTPBackend, SafeRPCServer, TelemetryCollector, VMSampler}
+  alias Gatehouse.LoadTest.{
+    HTTPBackend,
+    SafeRPCServer,
+    TelemetryCollector,
+    VMSampler,
+    WebSocketBackend
+  }
 
   def main(argv) do
     opts = parse_args(argv)
@@ -269,6 +315,7 @@ defmodule Gatehouse.LoadTest do
   end
 
   defp run(%{scenario: "http_baseline"} = opts), do: http_baseline(opts)
+  defp run(%{scenario: "ws_echo"} = opts), do: ws_echo(opts)
   defp run(%{scenario: "safe_rpc_baseline"} = opts), do: safe_rpc_baseline(opts)
   defp run(%{scenario: "safe_rpc_blue_green"} = opts), do: safe_rpc_blue_green(opts)
   defp run(%{scenario: "safe_rpc_restart"} = opts), do: safe_rpc_restart(opts)
@@ -288,6 +335,25 @@ defmodule Gatehouse.LoadTest do
     result = run_load(opts, host)
     HTTPBackend.stop(backend)
     Map.put(result, :scenario, "http_baseline")
+  end
+
+  defp ws_echo(%{driver: driver}) when driver != "builtin" do
+    raise "ws_echo requires --driver builtin; use k6 later for external WebSocket stress"
+  end
+
+  defp ws_echo(opts) do
+    {:ok, backend} = WebSocketBackend.start_link("ws")
+    host = "ws-echo.localhost"
+
+    start_gatehouse!(%{
+      host: host,
+      target: "http://127.0.0.1:#{backend.port}",
+      kind: :http
+    })
+
+    result = run_websocket_clients(opts, host)
+    WebSocketBackend.stop(backend)
+    Map.put(result, :scenario, "ws_echo")
   end
 
   defp safe_rpc_baseline(opts) do
@@ -557,6 +623,56 @@ defmodule Gatehouse.LoadTest do
     end
   end
 
+  defp run_websocket_clients(opts, host) do
+    port = Process.get(:gatehouse_load_port)
+    path = opts.path || "/ws"
+    ws_path = if path == "/bench", do: "/ws", else: path
+
+    results =
+      1..opts.requests
+      |> Task.async_stream(
+        fn index -> websocket_echo_once(port, host, ws_path, "ws-#{index}") end,
+        max_concurrency: opts.concurrency,
+        timeout: 30_000,
+        ordered: false
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    %{
+      requests: opts.requests,
+      concurrency: opts.concurrency,
+      url: "ws://127.0.0.1:#{port}#{ws_path}",
+      host: host,
+      statuses: frequencies(Enum.map(results, & &1.status)),
+      bodies: frequencies(Enum.map(results, & &1.body)),
+      client_durations: Enum.map(results, & &1.duration)
+    }
+  end
+
+  defp websocket_echo_once(port, host, path, message) do
+    start = System.monotonic_time()
+
+    result =
+      with {:ok, conn} <- :gun.open(~c"127.0.0.1", port, %{transport: :tcp, protocols: [:http]}),
+           {:ok, _protocol} <- :gun.await_up(conn, 5_000),
+           stream <- :gun.ws_upgrade(conn, path, [{"host", host}]),
+           {:upgrade, _protocols, _headers} <- :gun.await(conn, stream, 5_000),
+           :ok <- :gun.ws_send(conn, stream, {:text, message}),
+           {:ws, {:text, ^message}} <- :gun.await(conn, stream, 5_000) do
+        :gun.close(conn)
+        {:ok, message}
+      else
+        error -> error
+      end
+
+    duration = System.monotonic_time() - start
+
+    case result do
+      {:ok, echoed} -> %{status: :ok, body: echoed, duration: duration}
+      error -> %{status: {:error, error}, body: inspect(error), duration: duration}
+    end
+  end
+
   defp request_once(url, host) do
     start = System.monotonic_time()
 
@@ -682,7 +798,7 @@ defmodule Gatehouse.LoadTest do
   defp proxy_error_rate(%{count: count, statuses: statuses}) do
     errors =
       Enum.reduce(statuses, 0, fn
-        {status, _status_count}, acc when is_integer(status) and status >= 200 and status < 500 ->
+        {status, _status_count}, acc when is_integer(status) and status < 500 ->
           acc
 
         {_status, status_count}, acc ->

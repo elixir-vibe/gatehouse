@@ -32,6 +32,9 @@ mix run scripts/load_test_gatehouse.exs --scenario safe_rpc_baseline --requests 
 Available scenarios:
 
 - `http_baseline` — Gatehouse routes to a local HTTP backend.
+- `ws_echo` — Gatehouse proxies WebSocket upgrades to a local echo backend and
+  verifies concurrent echo round trips. This scenario currently requires the
+  built-in driver; use k6 later for external WebSocket stress.
 - `safe_rpc_baseline` — Gatehouse routes HTTP requests to a SafeRPC Unix socket
   backend.
 - `safe_rpc_blue_green` — traffic starts on a blue SafeRPC backend, switches to a
@@ -133,7 +136,7 @@ fast with a clear error.
 
 ## Stress cases to add next
 
-1. WebSocket echo and long-lived connection churn.
+1. Long-lived WebSocket connection churn and mixed message sizes.
 2. Streaming and slow-response backends.
 3. WebSocket echo and long-lived connection churn.
 4. Streaming and slow-response backends.
