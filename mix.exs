@@ -2,7 +2,7 @@ defmodule Gatehouse.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/dannote/gatehouse"
+  @source_url "https://github.com/elixir-vibe/gatehouse"
 
   def project do
     [
@@ -62,7 +62,7 @@ defmodule Gatehouse.MixProject do
       {:x509, "~> 0.9"},
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
-      {:req, "~> 0.5.8", override: true},
+      {:req, "~> 0.5.8"},
       {:safe_rpc, "~> 0.1"},
       {:plug, "~> 1.18"},
       {:systemdkit, "~> 0.1.2"}
@@ -95,14 +95,24 @@ defmodule Gatehouse.MixProject do
   defp package do
     [
       licenses: ["MIT"],
-      links: %{"GitHub" => @source_url}
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib docs rel config .formatter.exs mix.exs README.md LICENSE CHANGELOG.md)
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: ["README.md"],
+      extras: [
+        "README.md",
+        "CHANGELOG.md",
+        "LICENSE",
+        "docs/phoenix-dev.md",
+        "docs/systemd.md",
+        "docs/erlang-distribution.md",
+        "docs/telemetry.md"
+      ],
+      groups_for_extras: [Guides: ~r/docs\//],
       source_ref: "v#{@version}",
       source_url: @source_url
     ]

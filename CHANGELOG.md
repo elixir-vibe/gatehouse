@@ -1,9 +1,18 @@
 # Changelog
 
-## Unreleased
+## v0.1.0
+
+Initial package release.
 
 ### Added
 
+- Added OTP-native edge proxy and blue-green traffic switcher primitives.
+- Added runtime config DSL for HTTP/HTTPS listeners, services, targets, health checks, draining, and TLS settings.
+- Added Livery-based HTTP ingress and Gun-backed backend request forwarding.
+- Added WebSocket proxying for upgraded connections.
+- Added ACME provider boundary, ExAcme provider integration, certificate persistence, SNI lookup, and renewal scheduling.
+- Added distribution-friendly `Gatehouse.Control` deployment API.
+- Added systemd helper APIs and release runtime examples.
 - Added Phoenix-friendly development proxy tasks and documentation: `mix gatehouse.phx`, `mix gatehouse.run`, `mix gatehouse.trust`, and `mix gatehouse.routes`.
 - Added local development CA and `.localhost` host certificate generation for HTTPS dev proxying.
 - Added local HTTPS HTTP/1.1 proxy support for Phoenix apps, including LiveView/WebSocket traffic.
