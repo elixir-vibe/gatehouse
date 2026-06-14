@@ -45,6 +45,7 @@ Common options:
 --requests N         Total requests; default: 1000
 --concurrency N      Concurrent client tasks; default: 50
 --path PATH          Request path; default: /bench
+--sample-interval MS Periodic VM/process sampling interval; default: 1000
 ```
 
 ## Metrics collected
@@ -58,7 +59,9 @@ The harness attaches to Gatehouse telemetry and reports:
 - `[:gatehouse, :health_check, :stop]`
 
 It also reports client-side latency, status counts, BEAM process count, memory,
-and reduction count before and after the scenario.
+and reduction count before and after the scenario. During the run it samples VM
+state periodically, including total memory, memory breakdown, process count,
+reductions, and the top memory-consuming processes in the last sample.
 
 For SafeRPC scenarios, compare:
 
@@ -100,5 +103,6 @@ printf 'GET http://127.0.0.1:PORT/bench\nHost: safe-rpc-bench.localhost\n' \
 3. SafeRPC backend crash/restart during load.
 4. Blue-green switching while requests are in flight.
 5. Soak tests with process/memory leak assertions.
-6. Livery `instrument` metrics exporter wiring for lower-level HTTP server
+6. Leak assertions after warmup and forced garbage collection.
+7. Livery `instrument` metrics exporter wiring for lower-level HTTP server
    metrics.

@@ -86,6 +86,72 @@ defmodule Gatehouse.LoadTest.TelemetryCollector do
   end
 end
 
+defmodule Gatehouse.LoadTest.VMSampler do
+  use GenServer
+
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  end
+
+  def stop do
+    GenServer.call(__MODULE__, :stop)
+  end
+
+  @impl true
+  def init(opts) do
+    interval = Keyword.fetch!(opts, :interval)
+    state = %{interval: interval, samples: [sample()]}
+    schedule(interval)
+    {:ok, state}
+  end
+
+  @impl true
+  def handle_info(:sample, state) do
+    schedule(state.interval)
+    {:noreply, %{state | samples: [sample() | state.samples]}}
+  end
+
+  @impl true
+  def handle_call(:stop, _from, state) do
+    {:stop, :normal, Enum.reverse([sample() | state.samples]), state}
+  end
+
+  defp schedule(interval), do: Process.send_after(self(), :sample, interval)
+
+  defp sample do
+    %{
+      at_native: System.monotonic_time(),
+      process_count: :erlang.system_info(:process_count),
+      memory: :erlang.memory() |> Map.new(),
+      reductions: elem(:erlang.statistics(:reductions), 0),
+      top_processes: top_processes()
+    }
+  end
+
+  defp top_processes do
+    Process.list()
+    |> Enum.map(&process_summary/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(& &1.memory, :desc)
+    |> Enum.take(5)
+  end
+
+  defp process_summary(pid) do
+    with info when is_list(info) <-
+           Process.info(pid, [:registered_name, :current_function, :message_queue_len, :memory]) do
+      %{
+        pid: inspect(pid),
+        name: info[:registered_name],
+        current_function: info[:current_function],
+        message_queue_len: info[:message_queue_len],
+        memory: info[:memory]
+      }
+    else
+      _other -> nil
+    end
+  end
+end
+
 defmodule Gatehouse.LoadTest.HTTPBackend do
   alias Gatehouse.Livery
   alias Gatehouse.Livery.{Request, Response}
@@ -106,7 +172,7 @@ defmodule Gatehouse.LoadTest.HTTPBackend do
 end
 
 defmodule Gatehouse.LoadTest do
-  alias Gatehouse.LoadTest.{HTTPBackend, SafeRPCServer, TelemetryCollector}
+  alias Gatehouse.LoadTest.{HTTPBackend, SafeRPCServer, TelemetryCollector, VMSampler}
 
   def main(argv) do
     opts = parse_args(argv)
@@ -114,12 +180,14 @@ defmodule Gatehouse.LoadTest do
     {:ok, _collector} = TelemetryCollector.start_link([])
     TelemetryCollector.attach()
 
+    {:ok, _sampler} = VMSampler.start_link(interval: opts.sample_interval)
     before_vm = vm_stats()
 
     try do
       result = run(opts)
       after_vm = vm_stats()
-      print_report(result, TelemetryCollector.snapshot(), before_vm, after_vm)
+      samples = VMSampler.stop()
+      print_report(result, TelemetryCollector.snapshot(), before_vm, after_vm, samples)
     after
       TelemetryCollector.detach()
     end
@@ -128,7 +196,13 @@ defmodule Gatehouse.LoadTest do
   defp parse_args(argv) do
     {opts, _args, invalid} =
       OptionParser.parse(argv,
-        strict: [scenario: :string, requests: :integer, concurrency: :integer, path: :string]
+        strict: [
+          scenario: :string,
+          requests: :integer,
+          concurrency: :integer,
+          path: :string,
+          sample_interval: :integer
+        ]
       )
 
     if invalid != [], do: raise("invalid options: #{inspect(invalid)}")
@@ -137,7 +211,8 @@ defmodule Gatehouse.LoadTest do
       scenario: Keyword.get(opts, :scenario, "safe_rpc_baseline"),
       requests: Keyword.get(opts, :requests, 1_000),
       concurrency: Keyword.get(opts, :concurrency, 50),
-      path: Keyword.get(opts, :path, "/bench")
+      path: Keyword.get(opts, :path, "/bench"),
+      sample_interval: Keyword.get(opts, :sample_interval, 1_000)
     }
   end
 
@@ -320,7 +395,7 @@ defmodule Gatehouse.LoadTest do
     end
   end
 
-  defp print_report(result, telemetry, before_vm, after_vm) do
+  defp print_report(result, telemetry, before_vm, after_vm, samples) do
     IO.puts("\n== Gatehouse load test ==")
     IO.inspect(Map.drop(result, [:client_durations]), label: "scenario")
     print_duration_summary("client", result.client_durations)
@@ -342,6 +417,9 @@ defmodule Gatehouse.LoadTest do
 
     IO.puts("\n== VM stats ==")
     IO.inspect(%{before: before_vm, after: after_vm, delta: vm_delta(before_vm, after_vm)})
+
+    IO.puts("\n== VM samples ==")
+    print_sample_summary(samples)
   end
 
   defp print_duration_summary(label, durations) do
@@ -376,9 +454,11 @@ defmodule Gatehouse.LoadTest do
   end
 
   defp vm_stats do
+    memory = :erlang.memory() |> Map.new()
+
     %{
       process_count: :erlang.system_info(:process_count),
-      memory: :erlang.memory(:total),
+      memory: memory,
       reductions: elem(:erlang.statistics(:reductions), 0)
     }
   end
@@ -386,9 +466,41 @@ defmodule Gatehouse.LoadTest do
   defp vm_delta(before, after_stats) do
     %{
       process_count: after_stats.process_count - before.process_count,
-      memory: after_stats.memory - before.memory,
+      memory: memory_delta(before.memory, after_stats.memory),
       reductions: after_stats.reductions - before.reductions
     }
+  end
+
+  defp memory_delta(before, after_memory) do
+    after_memory
+    |> Map.keys()
+    |> Enum.concat(Map.keys(before))
+    |> Enum.uniq()
+    |> Map.new(fn key -> {key, Map.get(after_memory, key, 0) - Map.get(before, key, 0)} end)
+  end
+
+  defp print_sample_summary([]), do: IO.puts("no samples")
+
+  defp print_sample_summary(samples) do
+    total_memory = Enum.map(samples, & &1.memory.total)
+    process_counts = Enum.map(samples, & &1.process_count)
+    reductions = Enum.map(samples, & &1.reductions)
+    first = hd(samples)
+    last = List.last(samples)
+
+    IO.inspect(%{
+      count: length(samples),
+      duration_ms: native_to_ms(last.at_native - first.at_native),
+      process_count: %{min: Enum.min(process_counts), max: Enum.max(process_counts)},
+      total_memory: %{
+        min: Enum.min(total_memory),
+        max: Enum.max(total_memory),
+        delta: last.memory.total - first.memory.total
+      },
+      memory_breakdown_delta: memory_delta(first.memory, last.memory),
+      reductions_delta: List.last(reductions) - hd(reductions),
+      top_processes_last_sample: last.top_processes
+    })
   end
 
   defp frequencies(values), do: Enum.frequencies(values)
