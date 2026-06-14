@@ -69,6 +69,15 @@ defmodule Gatehouse.Backend.ConnectionPool do
   end
 
   @impl GenServer
+  def handle_info({:gun_down, conn, _protocol, _reason, _killed_streams}, state) do
+    next_state =
+      state
+      |> Enum.reject(fn {_key, entry} -> entry.conn == conn end)
+      |> Map.new()
+
+    {:noreply, next_state}
+  end
+
   def handle_info(:sweep, state) do
     idle_timeout = Application.get_env(:gatehouse, :backend_idle_timeout, @idle_timeout)
     cutoff = now() - idle_timeout
