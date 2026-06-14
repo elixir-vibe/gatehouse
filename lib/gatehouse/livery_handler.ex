@@ -121,22 +121,29 @@ defmodule Gatehouse.LiveryHandler do
   defp finalize_response(response, service, target_id) do
     case Response.body(response) do
       {:chunked, producer} ->
-        Response.with_body({:chunked, checkin_producer(producer, service, target_id)}, response)
+        Response.with_body(
+          {:chunked, track_stream_producer(producer, service, target_id)},
+          response
+        )
 
       {:sse, producer} ->
-        Response.with_body({:sse, checkin_producer(producer, service, target_id)}, response)
+        Response.with_body({:sse, track_stream_producer(producer, service, target_id)}, response)
 
       _body ->
         response
     end
   end
 
-  defp checkin_producer(producer, service, target_id) do
+  defp track_stream_producer(producer, service, target_id) do
+    tracked? = match?({:ok, _target}, Control.checkout(service, target_id))
+
     fn emit ->
       try do
         producer.(emit)
       after
-        Control.checkin(service, target_id)
+        if tracked? do
+          Control.checkin(service, target_id)
+        end
       end
     end
   end

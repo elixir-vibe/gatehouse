@@ -48,6 +48,9 @@ Available scenarios:
   stopped mid-run, then restarted on the same socket to exercise pool
   invalidation and recovery. This scenario requires the built-in driver because
   the harness coordinates the restart per request.
+- `http_stream_churn` — traffic starts on a streaming HTTP backend, switches
+  blue to green while streams are in flight, verifies both blue and green stream
+  completions, and verifies new requests route to green.
 - `safe_rpc_failure` — Gatehouse points at a missing SafeRPC socket and verifies
   failure behavior is surfaced as gateway errors without crashing the proxy.
 
@@ -166,6 +169,7 @@ Environment:
 | `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~12.3k req/s | 8.88ms | 20.69ms | 29.49ms | +0.67MiB | +37 |
 | `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.96ms | 9.28ms | 42.56ms | +6.49MiB | +38 |
 | `ws_churn` | builtin | 147,925 messages | 500 | 15,000 opens / 147,925 echoes | n/a | 0.64ms | 9.04ms | 36.32ms | +8.48MiB | +38 |
+| `http_stream_churn` | builtin | 1,000 | 100 | 515 blue / 485 green streams | n/a | 401.52ms | 600.78ms | 601.95ms | +6.12MiB | +230 |
 | `safe_rpc_restart` | builtin | 10,000 | 100 | 6,718 2xx / 3,282 502 | n/a | 0.27ms | 2.55ms | 6.40ms | +3.48MiB | +39 |
 
 The direct HTTP baseline shows the local Livery backend can serve about 108k
@@ -209,7 +213,6 @@ network I/O and HTTP parsing rather than Gatehouse business logic:
 ## Stress cases to add next
 
 1. WebSocket mixed message sizes and binary frames.
-2. Streaming and slow-response backends.
-3. Soak tests with process/memory leak assertions.
-4. Livery `instrument` metrics exporter wiring for lower-level HTTP server
+2. HTTP streaming soak tests with process/memory leak assertions.
+3. Livery `instrument` metrics exporter wiring for lower-level HTTP server
    metrics.

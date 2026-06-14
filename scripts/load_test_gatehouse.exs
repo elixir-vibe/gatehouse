@@ -189,7 +189,19 @@ defmodule Gatehouse.LoadTest.HTTPBackend do
   alias Gatehouse.Livery.{Request, Response}
 
   def start_link(label) do
-    handler = fn request -> Response.text(200, "#{label} #{Request.path(request)}") end
+    handler = fn request ->
+      case Request.path(request) do
+        "/stream" ->
+          Response.stream(200, [{"content-type", "text/plain"}], fn emit ->
+            emit.("#{label}:start\n")
+            Process.sleep(200)
+            emit.("#{label}:end\n")
+          end)
+
+        _path ->
+          Response.text(200, "#{label} #{Request.path(request)}")
+      end
+    end
 
     with {:ok, service} <-
            Livery.start_service(%{
@@ -327,6 +339,7 @@ defmodule Gatehouse.LoadTest do
 
   defp run(%{scenario: "direct_http_baseline"} = opts), do: direct_http_baseline(opts)
   defp run(%{scenario: "http_baseline"} = opts), do: http_baseline(opts)
+  defp run(%{scenario: "http_stream_churn"} = opts), do: http_stream_churn(opts)
   defp run(%{scenario: "ws_echo"} = opts), do: ws_echo(opts)
   defp run(%{scenario: "ws_churn"} = opts), do: ws_churn(opts)
   defp run(%{scenario: "safe_rpc_baseline"} = opts), do: safe_rpc_baseline(opts)
@@ -360,6 +373,66 @@ defmodule Gatehouse.LoadTest do
     result = run_load(opts, host)
     HTTPBackend.stop(backend)
     Map.put(result, :scenario, "http_baseline")
+  end
+
+  defp http_stream_churn(%{driver: driver}) when driver != "builtin" do
+    raise "http_stream_churn requires --driver builtin so the harness can switch targets during in-flight streams"
+  end
+
+  defp http_stream_churn(opts) do
+    {:ok, blue} = HTTPBackend.start_link("blue")
+    {:ok, green} = HTTPBackend.start_link("green")
+    host = "http-stream-churn.localhost"
+    service = :http_stream_churn
+
+    start_gatehouse!(%{
+      host: host,
+      target: "http://127.0.0.1:#{blue.port}",
+      kind: :http,
+      service: service
+    })
+
+    port = Process.get(:gatehouse_load_port)
+    url = "http://127.0.0.1:#{port}/stream"
+    switch_after = max(1, div(opts.requests, 2))
+    counter = :atomics.new(1, [])
+    switched = :atomics.new(1, [])
+
+    results =
+      1..opts.requests
+      |> Task.async_stream(
+        fn _index ->
+          current = :atomics.add_get(counter, 1, 1)
+
+          if current >= switch_after and :atomics.compare_exchange(switched, 1, 0, 1) == :ok do
+            apply_http_config!(host, "http://127.0.0.1:#{green.port}", service)
+          end
+
+          request_once(url, host)
+        end,
+        max_concurrency: opts.concurrency,
+        timeout: 30_000,
+        ordered: false
+      )
+      |> Enum.map(fn {:ok, result} -> result end)
+
+    verify = request_once("http://127.0.0.1:#{port}/bench", host)
+
+    HTTPBackend.stop(blue)
+    HTTPBackend.stop(green)
+
+    %{
+      requests: opts.requests,
+      concurrency: opts.concurrency,
+      url: url,
+      host: host,
+      statuses: frequencies(Enum.map(results, & &1.status)),
+      bodies: frequencies(Enum.map(results, & &1.body)),
+      client_durations: Enum.map(results, & &1.duration),
+      switch_after: switch_after,
+      verify_after_switch: verify.body
+    }
+    |> Map.put(:scenario, "http_stream_churn")
   end
 
   defp ws_echo(%{driver: driver}) when driver != "builtin" do
