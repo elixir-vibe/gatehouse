@@ -212,7 +212,10 @@ defmodule Gatehouse.LoadTest do
           path: :string,
           sample_interval: :integer,
           settle_ms: :integer,
-          gc: :boolean
+          gc: :boolean,
+          driver: :string,
+          duration: :string,
+          rate: :string
         ]
       )
 
@@ -225,7 +228,10 @@ defmodule Gatehouse.LoadTest do
       path: Keyword.get(opts, :path, "/bench"),
       sample_interval: Keyword.get(opts, :sample_interval, 1_000),
       settle_ms: Keyword.get(opts, :settle_ms, 1_000),
-      gc?: Keyword.get(opts, :gc, true)
+      gc?: Keyword.get(opts, :gc, true),
+      driver: Keyword.get(opts, :driver, "builtin"),
+      duration: Keyword.get(opts, :duration, "30s"),
+      rate: Keyword.get(opts, :rate, "1000/s")
     }
   end
 
@@ -250,7 +256,7 @@ defmodule Gatehouse.LoadTest do
       kind: :http
     })
 
-    result = run_clients(opts, host)
+    result = run_load(opts, host)
     HTTPBackend.stop(backend)
     Map.put(result, :scenario, "http_baseline")
   end
@@ -263,7 +269,7 @@ defmodule Gatehouse.LoadTest do
 
     start_gatehouse!(%{host: host, target: socket, kind: :safe_rpc})
 
-    result = run_clients(opts, host)
+    result = run_load(opts, host)
     GenServer.stop(server)
     Map.put(result, :scenario, "safe_rpc_baseline")
   end
@@ -284,7 +290,7 @@ defmodule Gatehouse.LoadTest do
     switched = :atomics.new(1, [])
 
     result =
-      run_clients(opts, host, fn index ->
+      run_load(opts, host, fn index ->
         current = :atomics.add_get(counter, 1, 1)
 
         if current >= switch_at and :atomics.compare_exchange(switched, 1, 0, 1) == :ok do
@@ -310,7 +316,7 @@ defmodule Gatehouse.LoadTest do
     start_gatehouse!(%{host: host, target: socket, kind: :safe_rpc})
 
     opts
-    |> run_clients(host)
+    |> run_load(host)
     |> Map.put(:scenario, "safe_rpc_failure")
   end
 
@@ -362,7 +368,9 @@ defmodule Gatehouse.LoadTest do
     :ok = Gatehouse.Control.apply_config(config)
   end
 
-  defp run_clients(opts, host, before_request \\ fn index -> index end) do
+  defp run_load(opts, host, before_request \\ fn index -> index end)
+
+  defp run_load(%{driver: "builtin"} = opts, host, before_request) do
     port = Process.get(:gatehouse_load_port)
     url = "http://127.0.0.1:#{port}#{opts.path}"
 
@@ -388,6 +396,80 @@ defmodule Gatehouse.LoadTest do
       bodies: frequencies(Enum.map(results, & &1.body)),
       client_durations: Enum.map(results, & &1.duration)
     }
+  end
+
+  defp run_load(%{driver: driver} = opts, host, _before_request)
+       when driver in ["bombardier", "wrk", "vegeta"] do
+    port = Process.get(:gatehouse_load_port)
+    url = "http://127.0.0.1:#{port}#{opts.path}"
+    output = run_external_driver!(driver, opts, url, host)
+
+    %{
+      requests: opts.requests,
+      concurrency: opts.concurrency,
+      url: url,
+      host: host,
+      driver: driver,
+      statuses: %{},
+      bodies: %{},
+      client_durations: [],
+      external_output: output
+    }
+  end
+
+  defp run_load(%{driver: driver}, _host, _before_request) do
+    raise "unknown load driver #{inspect(driver)}; expected builtin, bombardier, wrk, or vegeta"
+  end
+
+  defp run_external_driver!("bombardier", opts, url, host) do
+    run_tool!("bombardier", [
+      "-c",
+      to_string(opts.concurrency),
+      "-n",
+      to_string(opts.requests),
+      "-H",
+      "Host: #{host}",
+      url
+    ])
+  end
+
+  defp run_external_driver!("wrk", opts, url, host) do
+    threads = max(1, System.schedulers_online())
+
+    run_tool!("wrk", [
+      "-t#{threads}",
+      "-c#{opts.concurrency}",
+      "-d#{opts.duration}",
+      "-H",
+      "Host: #{host}",
+      url
+    ])
+  end
+
+  defp run_external_driver!("vegeta", opts, url, host) do
+    target = "GET #{url}\nHost: #{host}\n"
+
+    run_tool!("sh", [
+      "-c",
+      "printf '%s' \"$1\" | vegeta attack -rate \"$2\" -duration \"$3\" | vegeta report",
+      "vegeta-gatehouse",
+      target,
+      opts.rate,
+      opts.duration
+    ])
+  end
+
+  defp run_tool!(tool, args) do
+    case System.find_executable(tool) do
+      nil ->
+        raise "#{tool} is not installed or not on PATH"
+
+      _path ->
+        case System.cmd(tool, args, stderr_to_stdout: true) do
+          {output, 0} -> output
+          {output, status} -> raise "#{tool} failed with #{status}:\n#{output}"
+        end
+    end
   end
 
   defp request_once(url, host) do
