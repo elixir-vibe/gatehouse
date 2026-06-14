@@ -16,7 +16,7 @@ defmodule Gatehouse.Dev.Proxy do
           proxy_port: :inet.port_number(),
           cert_dir: Path.t(),
           tls: boolean(),
-          listener_name: atom()
+          listener_name: atom() | nil
         ]
 
   @spec default_host(atom() | String.t()) :: String.t()
@@ -107,9 +107,5 @@ defmodule Gatehouse.Dev.Proxy do
     end
   end
 
-  defp listener_name(opts) do
-    Keyword.get_lazy(opts, :listener_name, fn ->
-      String.to_atom("gatehouse_dev_proxy_#{System.unique_integer([:positive])}")
-    end)
-  end
+  defp listener_name(opts), do: Keyword.get(opts, :listener_name)
 end

@@ -63,7 +63,7 @@ defmodule Gatehouse.MixProject do
       {:gun, "~> 2.4"},
       {:telemetry, "~> 1.3"},
       {:req, "~> 0.5.8", override: true},
-      {:safe_rpc, path: "../safe_rpc"},
+      {:safe_rpc, "~> 0.1"},
       {:plug, "~> 1.18"},
       # Temporary path dependency until systemdkit is published to Hex.
       {:systemdkit, path: "../systemdkit"}

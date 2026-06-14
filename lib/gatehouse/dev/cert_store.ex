@@ -61,10 +61,8 @@ defmodule Gatehouse.Dev.CertStore do
           validity: @ca_days
         )
 
-      with :ok <- write_private(key_path, PrivateKey.to_pem(key)),
-           :ok <- File.write(cert_path, Certificate.to_pem(cert)) do
-        :ok
-      end
+      :ok = write_private(key_path, PrivateKey.to_pem(key))
+      File.write(cert_path, Certificate.to_pem(cert))
     end
   end
 
@@ -89,10 +87,8 @@ defmodule Gatehouse.Dev.CertStore do
           extensions: [subject_alt_name: Extension.subject_alt_name(sans)]
         )
 
-      with :ok <- write_private(key_path, PrivateKey.to_pem(key)),
-           :ok <- File.write(cert_path, Certificate.to_pem(cert)) do
-        :ok
-      end
+      :ok = write_private(key_path, PrivateKey.to_pem(key))
+      File.write(cert_path, Certificate.to_pem(cert))
     end
   end
 

@@ -11,8 +11,11 @@ defmodule Gatehouse.LiveryListener do
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
     listeners = Keyword.get(opts, :listeners) || listeners_from_opts(opts)
-    GenServer.start_link(__MODULE__, listeners, name: name)
+    GenServer.start_link(__MODULE__, listeners, server_opts(name))
   end
+
+  defp server_opts(nil), do: []
+  defp server_opts(name), do: [name: name]
 
   def port(server \\ __MODULE__) do
     GenServer.call(server, :port)

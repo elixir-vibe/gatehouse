@@ -87,24 +87,22 @@ defmodule Mix.Tasks.Gatehouse.Run do
         proxy
 
       {:error, {:error, {:badmatch, {:error, {:listen_failed, :eaddrinuse}}}}} ->
-        proxy_port_in_use!(opts)
+        Mix.raise(proxy_port_in_use_message(opts))
 
       {:error, {:listen_failed, :eaddrinuse}} ->
-        proxy_port_in_use!(opts)
+        Mix.raise(proxy_port_in_use_message(opts))
 
       {:error, :eaddrinuse} ->
-        proxy_port_in_use!(opts)
+        Mix.raise(proxy_port_in_use_message(opts))
 
       {:error, reason} ->
         Mix.raise("Could not start Gatehouse dev proxy: #{inspect(reason)}")
     end
   end
 
-  defp proxy_port_in_use!(opts) do
-    Mix.raise(
-      "Gatehouse proxy port #{opts[:proxy_port]} is already in use. " <>
-        "Stop the other process or pass --proxy-port with a free port."
-    )
+  defp proxy_port_in_use_message(opts) do
+    "Gatehouse proxy port #{opts[:proxy_port]} is already in use. " <>
+      "Stop the other process or pass --proxy-port with a free port."
   end
 
   defp safe_start_proxy(opts) do
