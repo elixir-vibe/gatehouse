@@ -134,13 +134,42 @@ mix run scripts/load_test_gatehouse.exs \
 If the selected executable is not installed or not on `PATH`, the harness fails
 fast with a clear error.
 
+## Local baseline results
+
+These are development-machine baselines, not release guarantees. They are useful
+for spotting large regressions while Gatehouse is still pre-release.
+
+Environment:
+
+- local Linux development machine
+- Gatehouse run with `mix run`
+- `bombardier --http1` for external HTTP pressure
+- `--requests 100000 --concurrency 200` for HTTP/SafeRPC baselines
+- bounded telemetry duration reservoirs, so p99 values are sampled on 100k runs
+
+| Scenario | Driver | Requests | Concurrency | Result | Throughput | Proxy p50 | Proxy p95 | Proxy p99 | Retained total | Retained processes |
+| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~13.4k req/s | 8.66ms | 18.72ms | 29.85ms | +0.84MiB | +37 |
+| `http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~18.3k req/s | 10.32ms | 12.54ms | 13.67ms | +1.99MiB | +41 |
+| `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.83ms | 7.84ms | 33.20ms | +6.83MiB | +38 |
+
+`safe_rpc_restart` with 10,000 requests and 100 concurrency correctly recovered
+traffic after restarting the backend, but it exposed retained memory/process
+threshold failures on this run:
+
+- responses: 6,716 successful, 3,284 expected `502 bad gateway` during outage
+- proxy p99: 1.78ms
+- retained total memory: about +201MiB
+- retained process count: +141
+
+Treat this as an active investigation item before considering Gatehouse release
+ready for restart-heavy workloads.
+
 ## Stress cases to add next
 
-1. Long-lived WebSocket connection churn and mixed message sizes.
-2. Streaming and slow-response backends.
-3. WebSocket echo and long-lived connection churn.
-4. Streaming and slow-response backends.
-5. Soak tests with process/memory leak assertions.
-6. Threshold-based leak assertions for retained memory/process growth.
-7. Livery `instrument` metrics exporter wiring for lower-level HTTP server
+1. Investigate retained memory/process growth in `safe_rpc_restart`.
+2. Long-lived WebSocket connection churn and mixed message sizes.
+3. Streaming and slow-response backends.
+4. Soak tests with process/memory leak assertions.
+5. Livery `instrument` metrics exporter wiring for lower-level HTTP server
    metrics.
