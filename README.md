@@ -11,6 +11,27 @@ Gatehouse is a BEAM-native application router for HostKit-style deployments.
 The proxy runs as a stable Erlang node at the edge while deploy tooling
 orchestrates releases over SSH.
 
+## Package status
+
+The public Hex package is intentionally a placeholder for now:
+
+- `gatehouse 0.0.1` reserves the package name and is not a usable runtime.
+- The real Gatehouse code currently lives in this public repository.
+- HostKit source deployments should clone this repository directly until the
+  first usable Gatehouse package is released.
+- The real Hex release is blocked on upstream Livery dependency resolution:
+  Hex `livery 0.3.2` is currently unsatisfiable because it depends on
+  `barrel_mcp ~> 2.2.3`, which pins `hackney 4.3.0`, while Livery itself
+  requires `hackney ~> 4.4.0`.
+- Gatehouse temporarily depends on a Livery Git fork while upstream PRs for
+  dependency resolution and transport fixes are pending.
+
+Use a Git dependency while this status remains:
+
+```elixir
+{:gatehouse, github: "elixir-vibe/gatehouse", branch: "master"}
+```
+
 ## Current architecture slice
 
 The package is intentionally small and OTP-first:
@@ -136,13 +157,14 @@ GATEHOUSE_PEBBLE=1 GATEHOUSE_PEBBLE_EXTERNAL=1 mix test test/gatehouse/acme_pebb
 ## Phoenix local HTTPS DX
 
 Phoenix apps can add Gatehouse as a dev dependency and run their dev server
-behind a stable local HTTPS URL:
+behind a stable local HTTPS URL. Until the first usable Hex package is released,
+use the public Git repository:
 
 ```elixir
 # mix.exs in your Phoenix app
 def deps do
   [
-    {:gatehouse, "~> 0.1", only: :dev, runtime: false}
+    {:gatehouse, github: "elixir-vibe/gatehouse", branch: "master", only: :dev, runtime: false}
   ]
 end
 ```
@@ -194,8 +216,10 @@ mix ci
 
 ## Near-term roadmap
 
-1. Add richer telemetry dashboards/examples.
-2. Add TLS listener wiring and certificate store.
-3. Implement a real ACME provider adapter behind `Gatehouse.ACME.Provider`.
+1. Resolve upstream Livery/Barrel MCP dependency blockers and publish the first
+   usable Gatehouse Hex release.
+2. Add richer telemetry dashboards/examples.
+3. Add load and stress test scenarios for HTTP, WebSocket, blue-green switching,
+   and ACME challenge routing.
 4. Add load-balancing policies beyond one active target.
 5. Add full multi-target runtime load balancing beyond the config shape.
