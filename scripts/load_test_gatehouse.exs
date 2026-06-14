@@ -314,6 +314,7 @@ defmodule Gatehouse.LoadTest do
     {:ok, _} = Application.ensure_all_started(:req)
   end
 
+  defp run(%{scenario: "direct_http_baseline"} = opts), do: direct_http_baseline(opts)
   defp run(%{scenario: "http_baseline"} = opts), do: http_baseline(opts)
   defp run(%{scenario: "ws_echo"} = opts), do: ws_echo(opts)
   defp run(%{scenario: "safe_rpc_baseline"} = opts), do: safe_rpc_baseline(opts)
@@ -321,6 +322,18 @@ defmodule Gatehouse.LoadTest do
   defp run(%{scenario: "safe_rpc_restart"} = opts), do: safe_rpc_restart(opts)
   defp run(%{scenario: "safe_rpc_failure"} = opts), do: safe_rpc_failure(opts)
   defp run(%{scenario: scenario}), do: raise("unknown scenario: #{scenario}")
+
+  defp direct_http_baseline(opts) do
+    {:ok, backend} = HTTPBackend.start_link("direct_http")
+    host = "direct-http-bench.localhost"
+    Process.put(:gatehouse_load_port, backend.port)
+
+    IO.puts("Direct backend listening at http://127.0.0.1:#{backend.port}/")
+
+    result = run_load(opts, host)
+    HTTPBackend.stop(backend)
+    Map.put(result, :scenario, "direct_http_baseline")
+  end
 
   defp http_baseline(opts) do
     {:ok, backend} = HTTPBackend.start_link("http")

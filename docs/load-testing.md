@@ -31,6 +31,8 @@ mix run scripts/load_test_gatehouse.exs --scenario safe_rpc_baseline --requests 
 
 Available scenarios:
 
+- `direct_http_baseline` — load generator routes directly to the local HTTP
+  backend, bypassing Gatehouse, for an apples-to-apples local overhead check.
 - `http_baseline` — Gatehouse routes to a local HTTP backend.
 - `ws_echo` — Gatehouse proxies WebSocket upgrades to a local echo backend and
   verifies concurrent echo round trips. This scenario currently requires the
@@ -149,9 +151,18 @@ Environment:
 
 | Scenario | Driver | Requests | Concurrency | Result | Throughput | Proxy p50 | Proxy p95 | Proxy p99 | Retained total | Retained processes |
 | --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `direct_http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~121.1k req/s | n/a | n/a | n/a | +2.90MiB | +0 |
 | `safe_rpc_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~13.4k req/s | 8.66ms | 18.72ms | 29.85ms | +0.84MiB | +37 |
-| `http_baseline` | bombardier | 100,000 | 200 | 100% 2xx | ~18.3k req/s | 10.32ms | 12.54ms | 13.67ms | +1.99MiB | +41 |
+| `http_baseline` before per-origin pooling | bombardier | 100,000 | 200 | 100% 2xx | ~18.3k req/s | 10.32ms | 12.54ms | 13.67ms | +1.99MiB | +41 |
+| `http_baseline` after per-origin pooling | bombardier | 100,000 | 200 | 100% 2xx | ~28.2k req/s | 0.57ms | 4.82ms | 10.44ms | +5.47MiB | +134 |
 | `ws_echo` | builtin | 10,000 | 200 | 10,000 echoes | n/a | 4.83ms | 7.84ms | 33.20ms | +6.83MiB | +38 |
+
+The direct HTTP baseline shows the local Livery backend can serve about 121k
+req/s on this machine. Gatehouse HTTP proxying was therefore about 15% of direct
+backend throughput before per-origin pooling and about 23% after adding a bounded
+per-origin upstream connection pool (`:backend_max_connections_per_origin`,
+default 32). That is a meaningful improvement, but still leaves HTTP proxy
+performance as an optimization area.
 
 `safe_rpc_restart` with 10,000 requests and 100 concurrency correctly recovered
 traffic after restarting the backend, but it exposed retained memory/process

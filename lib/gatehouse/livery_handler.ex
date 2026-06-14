@@ -113,8 +113,8 @@ defmodule Gatehouse.LiveryHandler do
       {:ok, {:stream, status, headers, producer}} ->
         Response.stream(status, response_headers(headers), producer)
 
-      {:error, reason} ->
-        Response.text(502, "bad gateway: #{inspect(reason)}")
+      {:error, _reason} ->
+        Response.text(502, "bad gateway")
     end
   end
 
