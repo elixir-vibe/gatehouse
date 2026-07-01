@@ -20,11 +20,11 @@ The public Hex package is intentionally a placeholder for now:
 - HostKit source deployments should clone this repository directly until the
   first usable Gatehouse package is released.
 - The real Hex release is blocked on upstream Livery dependency resolution:
-  Hex `livery 0.3.2` is currently unsatisfiable because it depends on
-  `barrel_mcp ~> 2.2.3`, which pins `hackney 4.3.0`, while Livery itself
-  requires `hackney ~> 4.4.0`.
-- Gatehouse temporarily depends on a Livery Git fork while upstream PRs for
-  dependency resolution and transport fixes are pending.
+  the current Hex `livery 0.4.x` releases are unsatisfiable because transitive
+  wire dependencies still pin older `hackney`, `webtransport`, and `h2`
+  versions while Livery itself requires newer ones.
+- Gatehouse temporarily depends on a Livery Git fork while the upstream fixes
+  needed for a satisfiable Hex dependency set are pending.
 
 Use a Git dependency while this status remains:
 

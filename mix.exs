@@ -45,16 +45,18 @@ defmodule Gatehouse.MixProject do
 
   defp deps do
     [
+      {:pi_bridge, "== 0.6.22", only: :dev},
       {:ex_slop, "~> 0.4", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.0", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.0", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.0", only: [:dev, :test], runtime: false},
       {:credo, "~> 1.0", only: [:dev, :test], runtime: false},
-      {:vibe_kit, "== 0.1.2", only: [:dev, :test], runtime: false, override: true},
+      {:vibe_kit, "== 0.1.5", only: [:dev, :test], runtime: false, override: true},
       {:igniter, "~> 0.6", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
-      # Temporary fork until Livery publishes ssl_opts forwarding, HTTP/2 authority
-      # propagation, and HTTPS H1 WebSocket upgrades.
+      # Temporary fork until Livery publishes a satisfiable Hex release with
+      # ssl_opts forwarding, HTTP/2 authority propagation, and HTTPS H1
+      # WebSocket upgrades.
       {:livery,
        git: "https://github.com/dannote/livery.git",
        ref: "f62037300a3d45ca31b9b93497ebe3dea65514d8"},
@@ -66,7 +68,7 @@ defmodule Gatehouse.MixProject do
       {:req, "~> 0.5.8"},
       {:safe_rpc, "~> 0.1"},
       {:plug, "~> 1.18"},
-      {:systemdkit, "~> 0.1.2"}
+      {:systemdkit, "~> 0.1.4"}
     ]
   end
 
